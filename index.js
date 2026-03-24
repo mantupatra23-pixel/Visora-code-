@@ -5,50 +5,46 @@ require('dotenv').config();
 
 const app = express();
 
-// Middlewares
 app.use(cors());
 app.use(express.json());
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// Main AI Generation API
 app.post('/api/build', async (req, res) => {
     try {
         const { prompt } = req.body;
-        console.log(`New build request received: ${prompt}`);
+        console.log(`New prompt received: ${prompt}`);
 
-        // Model select karna (Flash fast hota hai coding ke liye)
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        // CHECK 1: Kya API Key Render par set hai?
+        if (!process.env.GEMINI_API_KEY) {
+            return res.json({ 
+                success: false, 
+                error: "API Key missing! Render ke Environment tab mein GEMINI_API_KEY set karo." 
+            });
+        }
 
-        // System Prompt: AI ko batana ki use kya karna hai
-        const systemPrompt = `You are Visora Code Agent, an expert React developer. 
-        Write a complete, working React App component based on the user's request. 
-        Return ONLY valid React JSX code. No markdown formatting, no explanations, no HTML tags.`;
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        // CHECK 2: Sabse stable model use kar rahe hain
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+        const systemPrompt = `You are an expert React developer. Write ONLY valid JSX code for the requested app. No markdown, no explanations, no html tags.`;
         const finalPrompt = `${systemPrompt}\n\nUser Request: ${prompt}`;
 
         const result = await model.generateContent(finalPrompt);
         const response = await result.response;
-        const generatedCode = response.text();
+        const text = response.text();
 
-        res.json({
-            success: true,
-            code: generatedCode
-        });
+        res.json({ success: true, code: text });
 
     } catch (error) {
-        console.error("AI Engine Error:", error);
-        res.status(500).json({ success: false, error: "Failed to generate code." });
+        console.error("AI Engine Error:", error.message);
+        // Asli error seedha frontend par bhejenge!
+        res.json({ success: false, error: `Google AI Error: ${error.message}` });
     }
 });
 
-// Test Route
 app.get('/', (req, res) => {
-    res.json({ message: "Visora Code AI Engine is Live! 🧠⚡", status: "Active" });
+    res.send("Backend is Live!");
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Visora AI Backend is running on port ${PORT}`);
+app.listen(process.env.PORT || 3000, () => {
+    console.log("Server running...");
 });
