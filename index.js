@@ -15,15 +15,15 @@ app.post('/api/build', async (req, res) => {
 
         // CHECK 1: Kya API Key Render par set hai?
         if (!process.env.GEMINI_API_KEY) {
-            return res.json({ 
-                success: false, 
+            return res.json({
+                success: false,
                 error: "API Key missing! Render ke Environment tab mein GEMINI_API_KEY set karo." 
             });
         }
 
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         // CHECK 2: Sabse stable model use kar rahe hain
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
         const systemPrompt = `You are an expert React developer. Write ONLY valid JSX code for the requested app. No markdown, no explanations, no html tags.`;
         const finalPrompt = `${systemPrompt}\n\nUser Request: ${prompt}`;
