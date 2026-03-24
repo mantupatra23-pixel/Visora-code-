@@ -19,7 +19,7 @@ app.post('/api/build', async (req, res) => {
         console.log(`New build request received: ${prompt}`);
 
         // Model select karna (Flash fast hota hai coding ke liye)
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
         // System Prompt: AI ko batana ki use kya karna hai
         const systemPrompt = `You are Visora Code Agent, an expert React developer. 
