@@ -32,9 +32,9 @@ app.post('/api/build', async (req, res) => {
         const response = await result.response;
         const generatedCode = response.text();
 
-        res.json({ 
-            success: true, 
-            code: generatedCode 
+        res.json({
+            success: true,
+            code: generatedCode
         });
 
     } catch (error) {
