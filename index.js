@@ -1,50 +1,50 @@
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 require('dotenv').config();
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
-app.post('/api/build', async (req, res) => {
-    try {
-        const { prompt } = req.body;
-        console.log(`New prompt received: ${prompt}`);
+// Initialize Groq AI
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY
+});
 
-        // CHECK 1: Kya API Key Render par set hai?
-        if (!process.env.GEMINI_API_KEY) {
-            return res.json({
-                success: false,
-                error: "API Key missing! Render ke Environment tab mein GEMINI_API_KEY set karo." 
+app.post('/api/build', async (req, res) => {
+    const { prompt } = req.body;
+    console.log(`New prompt received: ${prompt}`);
+
+    try {
+        if (!process.env.GROQ_API_KEY) {
+            return res.json({ 
+                success: false, 
+                error: "GROQ_API_KEY missing! Render par set karo." 
             });
         }
 
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // CHECK 2: Sabse stable model use kar rahe hain
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+        const systemPrompt = `You are an expert React developer. Write ONLY valid JSX code for the requested app. No markdown, no explanations, no html tags. Just the raw code.`;
 
-        const systemPrompt = `You are an expert React developer. Write ONLY valid JSX code for the requested app. No markdown, no explanations, no html tags.`;
-        const finalPrompt = `${systemPrompt}\n\nUser Request: ${prompt}`;
+        // Groq API Call (Using LLaMA 3 70B - Very fast & smart for coding)
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: prompt }
+            ],
+            model: 'llama3-70b-8192',
+            temperature: 0.5,
+        });
 
-        const result = await model.generateContent(finalPrompt);
-        const response = await result.response;
-        const text = response.text();
+        const generatedCode = chatCompletion.choices[0]?.message?.content || "";
 
-        res.json({ success: true, code: text });
+        res.json({ success: true, code: generatedCode });
 
     } catch (error) {
-        console.error("AI Engine Error:", error.message);
-        // Asli error seedha frontend par bhejenge!
-        res.json({ success: false, error: `Google AI Error: ${error.message}` });
+        console.error("Groq Engine Error:", error.message);
+        res.json({ success: false, error: `Groq AI Error: ${error.message}` });
     }
 });
 
-app.get('/', (req, res) => {
-    res.send("Backend is Live!");
-});
-
-app.listen(process.env.PORT || 3000, () => {
-    console.log("Server running...");
-});
+app.get('/', (req, res) => res.send("Groq AI Backend is Live! 🚀"));
+app.listen(process.env.PORT || 3000, () => console.log("Server running..."));
