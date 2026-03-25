@@ -18,8 +18,8 @@ app.post('/api/build', async (req, res) => {
 
     try {
         if (!process.env.GROQ_API_KEY) {
-            return res.json({ 
-                success: false, 
+            return res.json({
+                success: false,
                 error: "GROQ_API_KEY missing! Render par set karo." 
             });
         }
@@ -32,7 +32,7 @@ app.post('/api/build', async (req, res) => {
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
             ],
-            model: 'llama3-70b-8192',
+            model: 'llama-3.3-70b-versatile',
             temperature: 0.5,
         });
 
