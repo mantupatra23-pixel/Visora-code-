@@ -22,27 +22,27 @@ app.get('/api/env', (req, res) => {
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`[🚀 Analyzing Prompt]: ${prompt.substring(0, 50)}...`);
+    console.log(`[🚀 Mantu AI Analyzing]: ${prompt.substring(0, 50)}...`);
 
     try {
         if (!process.env.GROQ_API_KEY) {
             return res.json({ success: false, error: "GROQ_API_KEY missing!" });
         }
 
-        // 🔥 THE FLAWLESS CODE GENERATOR PROMPT 🔥
-        const systemPrompt = `You are an elite AI Code Generator like Cursor or v0.dev.
-Your job is to generate a COMPLETE, flawless, production-ready React component.
+        // 🔥 THE ULTIMATE STRICT PROMPT 🔥
+        const systemPrompt = `You are Mantu AI, an elite React developer.
+Your ONLY job is to output a SINGLE, fully functional React component file.
 
-CRITICAL FORMATTING RULES:
-1. LEFT-ALIGNED INDENTATION: You MUST use standard 2-space indentation. NEVER center-align the code. NEVER add massive empty spaces to the left.
-2. ZERO MARKDOWN: Do NOT wrap your response in \`\`\`jsx or \`\`\` tags. Return ONLY the raw code string.
-3. SINGLE FILE STRUCTURE:
-   - Start with \`import React, { useState } from 'react';\`
-   - Define custom SVG icons as variables.
-   - Define sub-components.
-   - End with \`export default function App() { ... }\`
-4. TAILWIND CSS: Use Tailwind for all styling (dark mode, glassmorphism, gradients).
-5. NO YAPPING: Absolutely no conversational text or explanations. Code only.`;
+CRITICAL RULES (IF YOU BREAK THESE, THE APP CRASHES):
+1. NO MARKDOWN: NEVER output \`\`\`jsx or \`\`\` tags. NEVER. Output ONLY plain text code.
+2. SINGLE FILE ONLY: Combine ALL components, icons, and logic into ONE single file. DO NOT split into multiple files.
+3. STRUCTURE:
+   - Always start with: import React, { useState, useEffect } from 'react';
+   - Define all custom SVG icons next.
+   - Define all sub-components.
+   - End with: export default function App() { ... }
+4. INDENTATION: Use standard 2-space indentation. Keep it clean.
+5. NO YAPPING: Absolutely no conversational text.`;
 
         const chatCompletion = await groq.chat.completions.create({
             messages: [
@@ -50,13 +50,15 @@ CRITICAL FORMATTING RULES:
                 { role: 'user', content: prompt }
             ],
             model: 'llama-3.3-70b-versatile',
-            temperature: 0.1, // Fixed syntax and formatting requires low temperature
+            temperature: 0.1, 
         });
 
         let generatedCode = chatCompletion.choices[0]?.message?.content || "";
-
-        // Final Markdown Strip
-        generatedCode = generatedCode.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '').trim();
+        
+        // 🔥 AGGRESSIVE CLEANUP: Remove ANY trace of markdown 🔥
+        generatedCode = generatedCode.replace(/```(jsx|tsx|javascript|js|react)?/gi, ''); 
+        generatedCode = generatedCode.replace(/```/g, '');
+        generatedCode = generatedCode.trim();
 
         res.json({ success: true, code: generatedCode });
 
@@ -66,5 +68,5 @@ CRITICAL FORMATTING RULES:
     }
 });
 
-app.get('/', (req, res) => res.send("Visora Flawless Code Engine Live! 🚀"));
+app.get('/', (req, res) => res.send("Mantu AI Backend is Live! 🚀"));
 app.listen(process.env.PORT || 3000, () => console.log("Server running..."));
