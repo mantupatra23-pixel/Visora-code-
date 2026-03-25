@@ -7,36 +7,52 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Groq AI
+// --- 1. GROQ AI SETUP ---
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY
 });
 
+// --- 2. NEW ENDPOINT: REAL ENV VARIABLES (Masked for safety) ---
+// Ye route aapke Frontend ke "Env" button ko chalayega
+app.get('/api/env', (req, res) => {
+    const maskedVars = {};
+    Object.keys(process.env).forEach(key => {
+        const value = process.env[key];
+        // Sirf zaroori details bhejenge, wo bhi aadhi chupa kar (security ke liye)
+        if (key.includes('KEY') || key.includes('PORT') || key.includes('URL') || key.includes('ENV')) {
+            maskedVars[key] = value ? `${value.substring(0, 4)}•••••••• (Masked)` : 'NOT DEFINED';
+        }
+    });
+    res.json({ success: true, variables: maskedVars });
+});
+
+// --- 3. MAIN AI CODE GENERATION ENDPOINT ---
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`New prompt received: ${prompt}`);
+    console.log(`[🚀 New Build Request]: ${prompt.substring(0, 50)}...`);
 
     try {
         if (!process.env.GROQ_API_KEY) {
-            return res.json({
-                success: false,
-                error: "GROQ_API_KEY missing! Render par set karo." 
-            });
+            return res.json({ success: false, error: "GROQ_API_KEY missing! Render par add karo." });
         }
 
-        const systemPrompt = `You are an expert React developer. Write ONLY valid JSX code for the requested app. No markdown, no explanations, no html tags. Just the raw code.`;
+        // AI ko strict instruction: "Sirf code do, markdown ya baatein nahi"
+        const systemPrompt = `You are an expert React developer. Write ONLY valid React JSX code for the requested app. 
+        CRITICAL: Do NOT wrap the code in markdown blocks (like \`\`\`jsx). Do NOT include any explanations. Just return the raw code string.`;
 
-        // Groq API Call (Using LLaMA 3 70B - Very fast & smart for coding)
         const chatCompletion = await groq.chat.completions.create({
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
             ],
-            model: 'llama-3.3-70b-versatile',
-            temperature: 0.5,
+            model: 'llama-3.3-70b-versatile', // Sabse fast aur naya model
+            temperature: 0.3,
         });
 
-        const generatedCode = chatCompletion.choices[0]?.message?.content || "";
+        let generatedCode = chatCompletion.choices[0]?.message?.content || "";
+        
+        // Agar AI galti se markdown (```jsx) laga de, toh usko saaf karne ka jugaad:
+        generatedCode = generatedCode.replace(/^```jsx\n|^```javascript\n|^```\n/i, '').replace(/\n```$/i, '');
 
         res.json({ success: true, code: generatedCode });
 
@@ -46,5 +62,9 @@ app.post('/api/build', async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send("Groq AI Backend is Live! 🚀"));
-app.listen(process.env.PORT || 3000, () => console.log("Server running..."));
+// --- 4. SERVER STATUS ROUTE ---
+app.get('/', (req, res) => res.send("Visora AI Engine (Powered by Groq) is Live! 🚀"));
+
+// --- 5. START SERVER ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}...`));
