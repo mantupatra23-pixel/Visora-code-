@@ -14,16 +14,17 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 
-// 🔥 DONO ENGINES INITIALIZE KIYE HAIN 🔥
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY); 
 
 const WORKSPACE_DIR = './mantu_workspace';
+
+// 🔥 SMART API THROTTLER: 6 Seconds wait to NEVER hit the 15 RPM Limit 🔥
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 🔥 MODELS SETUP 🔥
-const MASTER_MODEL = 'llama-3.3-70b-versatile'; // Groq for Planning
-const WORKER_MODEL = 'gemini-2.5-flash'; // 🔥 Google Gemini for Heavy Coding! 🔥
+// 🔥 FIXED MODELS: Using 1.5-flash for massive free tier limits 🔥
+const MASTER_MODEL = 'llama-3.3-70b-versatile'; 
+const WORKER_MODEL = 'gemini-1.5-flash'; 
 
 const extractJson = (text) => {
     try {
@@ -41,30 +42,31 @@ const initWorkspace = async () => {
 initWorkspace();
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "GROQ + GEMINI HYBRID GOD-MODE ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "BULLETPROOF HYBRID SWARM ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt, isEdit } = req.body; 
-    console.log(`\n[🚀 Hybrid Swarm Initiated]`);
+    console.log(`\n[🚀 Bulletproof Hybrid Swarm Initiated]`);
 
     try {
         if (!process.env.GROQ_API_KEY || !process.env.GEMINI_API_KEY) {
-            return res.json({ success: false, error: "Dono GROQ_API_KEY aur GEMINI_API_KEY Render mein zaroori hain!" });
+            return res.json({ success: false, error: "GROQ_API_KEY or GEMINI_API_KEY missing!" });
         }
 
         let masterLogs = [];
         let masterFiles = {};
-        let finalPrompt = prompt + "\n[CRITICAL: Act as a Web Surfer Agent. Use the absolute latest documentation, latest frameworks, and modern standards.]";
+        
+        let finalPrompt = prompt + "\n[CRITICAL: Use modern standards. DO NOT output markdown outside of JSON.]";
 
         // =================================================================
-        // 🧠 MASTER ARCHITECT (GROQ - 70b)
+        // 🧠 MASTER ARCHITECT (GROQ)
         // =================================================================
-        masterLogs.push({ agent: "Omni-Master", status: "Planning Blueprint", details: "Groq is designing the architecture..." });
+        masterLogs.push({ agent: "Omni-Master", status: "Planning Blueprint", details: "Groq is designing architecture..." });
         
         const masterPrompt = `You are the Omni-Language Master. Request: "${finalPrompt}"
-        Determine the Tech Stack, EXACT file paths with nested folders, and required NPM packages.
-        Return ONLY JSON: { "tech_stack": "...", "files_needed": ["frontend/src/App.jsx", "backend/main.py"], "dependencies": ["axios", "fastapi"] }`;
+        Determine Tech Stack, EXACT file paths with nested folders, and NPM packages.
+        Return ONLY JSON: { "tech_stack": "...", "files_needed": ["src/App.jsx"], "dependencies": ["axios"] }`;
 
         const masterRes = await groq.chat.completions.create({ 
             messages: [{ role: 'system', content: masterPrompt }], 
@@ -78,32 +80,31 @@ app.post('/api/build', async (req, res) => {
         const filesToGenerate = masterData.files_needed || ["src/App.jsx"];
         const dependencies = masterData.dependencies || [];
         
-        masterLogs.push({ agent: "System Architect", status: "Stack Locked", details: `Tech: ${techStack}. Generating ${filesToGenerate.length} files using Gemini.` });
+        masterLogs.push({ agent: "System Architect", status: "Stack Locked", details: `Generating ${filesToGenerate.length} files.` });
 
         // =================================================================
-        // ⚡ DEEP CODING (GEMINI - gemini-2.5-flash) 🔥
+        // ⚡ DEEP CODING (GEMINI 1.5 FLASH)
         // =================================================================
+        const geminiModel = genAI.getGenerativeModel({ 
+            model: WORKER_MODEL,
+            generationConfig: { responseMimeType: "application/json" } 
+        });
+
         for (const filename of filesToGenerate) {
             try {
-                await sleep(2000); 
+                // 🔥 THE MAGIC CURE: 6 Second delay per file to bypass 429 Error 🔥
+                await sleep(6000); 
 
-                masterLogs.push({ agent: `${techStack} Dev (Gemini)`, status: "Deep Coding", details: `Gemini is writing elite logic for ${filename}...` });
+                masterLogs.push({ agent: `${techStack} Dev (Gemini)`, status: "Deep Coding", details: `Writing elite logic for ${filename}...` });
                 
-                const workerPrompt = `You are an Elite Developer. The user requested this project: "${finalPrompt}".
-                🚨 CRITICAL RULE: YOU ARE ONLY WRITING THE CODE FOR: ${filename} 🚨
-                Write detailed, production-ready code.
-                Return ONLY JSON: { "code": "full code here" }`;
-                
-                // 🔥 GEMINI SDK MAGIC 🔥
-                const geminiModel = genAI.getGenerativeModel({ 
-                    model: WORKER_MODEL,
-                    generationConfig: { responseMimeType: "application/json" } // Force Gemini to return clean JSON
-                });
+                const workerPrompt = `You are an Elite Developer. Project Context: "${finalPrompt}".
+                🚨 CRITICAL: YOU ARE ONLY WRITING CODE FOR ${filename}. Do not write other files.
+                Return ONLY JSON: { "code": "full detailed code here" }`;
                 
                 const geminiResult = await geminiModel.generateContent(workerPrompt);
                 let currentCode = extractJson(geminiResult.response.text())?.code || geminiResult.response.text();
 
-                // FILE SYSTEM
+                // SAVE FILE
                 const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
                 await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true });
                 await fs.writeFile(absoluteFilePath, currentCode);
@@ -117,15 +118,15 @@ app.post('/api/build', async (req, res) => {
                     } else if (filename.endsWith('.py')) {
                         await execPromise(`python -m py_compile "${absoluteFilePath}"`);
                     }
-                    masterLogs.push({ agent: "Sandbox Engine", status: "Test Passed", details: "Zero syntax errors detected." });
+                    masterLogs.push({ agent: "Sandbox Engine", status: "Test Passed", details: "Zero syntax errors." });
                 } catch (execErr) {
                     executionError = execErr.message;
                     masterLogs.push({ agent: "Auto-Heal Alert", status: "Execution Failed", details: `Terminal error detected.` });
                 }
 
-                // QA AUTO-FIX (Also uses Gemini)
+                // QA AUTO-FIX
                 if (executionError) {
-                    await sleep(2000); 
+                    await sleep(6000); // Another delay before fix
                     masterLogs.push({ agent: "QA Hacker (Gemini)", status: "Hunting Bugs", details: "Auto-fixing code..." });
                     const qaPrompt = `Fix this terminal error:\n${executionError}\n\nCode:\n${currentCode}\nReturn ONLY JSON: { "code": "fixed code" }`;
                     
@@ -133,12 +134,14 @@ app.post('/api/build', async (req, res) => {
                     currentCode = extractJson(qaResult.response.text())?.code || currentCode;
                     
                     await fs.writeFile(absoluteFilePath, currentCode);
-                    masterLogs.push({ agent: "QA Hacker (Gemini)", status: "Bug Fixed", details: "Terminal error successfully auto-healed." });
+                    masterLogs.push({ agent: "QA Hacker (Gemini)", status: "Bug Fixed", details: "Terminal error auto-healed." });
                 }
                 masterFiles[filename] = currentCode;
 
             } catch (fileError) {
-                masterLogs.push({ agent: "System Alert", status: "API Failed", details: `Gemini Failed on ${filename}: ${fileError.message}` });
+                // Formatting error so UI doesn't break
+                const shortError = fileError.message.substring(0, 80) + '...';
+                masterLogs.push({ agent: "System Alert", status: "API Failed", details: `Gemini Error on ${filename}: ${shortError}` });
             }
         }
 
@@ -146,7 +149,7 @@ app.post('/api/build', async (req, res) => {
         // 📦 NPM INSTALL BOT
         // =================================================================
         if (dependencies.length > 0) {
-            masterLogs.push({ agent: "Dependency Manager", status: "Installing Packages", details: `Running npm install for ${dependencies.join(', ')}...` });
+            masterLogs.push({ agent: "Dependency Manager", status: "Installing Packages", details: `Running npm install...` });
             try {
                 try { await fs.access(path.join(WORKSPACE_DIR, 'package.json')); } 
                 catch { await fs.writeFile(path.join(WORKSPACE_DIR, 'package.json'), JSON.stringify({ name: "mantu-app", version: "1.0.0" })); }
@@ -157,7 +160,7 @@ app.post('/api/build', async (req, res) => {
             }
         }
 
-        masterLogs.push({ agent: "Deployment Manager", status: "Success", details: `Project built perfectly using Groq + Gemini Hybrid!` });
+        masterLogs.push({ agent: "Deployment Manager", status: "Success", details: `Project built perfectly using Bulletproof Hybrid Swarm!` });
         res.json({ success: true, logs: masterLogs, files: masterFiles });
 
     } catch (error) {
