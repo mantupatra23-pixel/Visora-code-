@@ -54,7 +54,7 @@ CRITICAL RULES (IF YOU BREAK THESE, THE APP CRASHES):
         });
 
         let generatedCode = chatCompletion.choices[0]?.message?.content || "";
-        
+
         // 🔥 AGGRESSIVE CLEANUP: Remove ANY trace of markdown 🔥
         generatedCode = generatedCode.replace(/```(jsx|tsx|javascript|js|react)?/gi, ''); 
         generatedCode = generatedCode.replace(/```/g, '');
