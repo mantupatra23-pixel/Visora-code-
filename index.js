@@ -24,7 +24,6 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const MASTER_MODEL = 'llama-3.3-70b-versatile'; 
 const GEMINI_WORKER = 'gemini-1.5-flash'; 
-// 🔥 UPGRADED GROQ FALLBACK TO MOST POWERFUL MODEL 🔥
 const GROQ_WORKER = 'llama-3.3-70b-versatile'; 
 
 const extractJson = (text) => {
@@ -37,7 +36,6 @@ const extractJson = (text) => {
     }
 };
 
-// 🔥 NEW: Raw Code Cleaner (No JSON Needed for Workers!) 🔥
 const cleanRawCode = (text) => {
     return text.replace(/```[a-zA-Z]*\n/gi, '').replace(/```/gi, '').trim();
 };
@@ -47,7 +45,9 @@ const initWorkspace = async () => {
 };
 initWorkspace();
 
+// 🔥 FIXED 4-TIER ENGINE 🔥
 async function safeGenerate(promptText, isJson = true) {
+    // 🥇 Tier 1: Gemini (First API)
     try {
         if (!genAI) throw new Error("Gemini Key Missing");
         const geminiModel = genAI.getGenerativeModel({ 
@@ -59,6 +59,7 @@ async function safeGenerate(promptText, isJson = true) {
     } catch (geminiErr) {
         console.log(`[⚠️ Gemini Down] -> Switching to Groq...`);
         
+        // 🥈 Tier 2: Groq
         try {
             await sleep(1000);
             const groqRes = await groq.chat.completions.create({ 
@@ -74,35 +75,45 @@ async function safeGenerate(promptText, isJson = true) {
         } catch (groqErr) {
             console.log(`[⚠️ Groq Down] -> Switching to OpenRouter...`);
             
+            // 🥉 Tier 3: OpenRouter (FIXED HEADERS & MODEL)
             try {
                 if (!OPENROUTER_KEY) throw new Error("OpenRouter Key Missing");
                 await sleep(1000);
                 const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                     method: "POST",
-                    headers: { "Authorization": `Bearer ${OPENROUTER_KEY}`, "Content-Type": "application/json" },
+                    headers: { 
+                        "Authorization": `Bearer ${OPENROUTER_KEY}`, 
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://mantu-ai.com", // REQUIRED BY OPENROUTER
+                        "X-Title": "Mantu AI" // REQUIRED BY OPENROUTER
+                    },
                     body: JSON.stringify({
-                        model: "meta-llama/llama-3-8b-instruct:free", 
-                        messages: [{ role: "user", content: promptText + (isJson ? " MUST RETURN JSON ONLY." : " MUST RETURN RAW CODE ONLY. NO MARKDOWN.") }]
+                        model: "mistralai/mistral-7b-instruct:free", // Most stable free model
+                        messages: [{ role: "user", content: promptText + (isJson ? " MUST RETURN JSON FORMAT ONLY." : " MUST RETURN RAW CODE ONLY. NO MARKDOWN.") }]
                     })
                 });
-                if (!openRouterRes.ok) throw new Error(`HTTP ${openRouterRes.status}`);
-                const openRouterData = await openRouterRes.json();
+                const orText = await openRouterRes.text();
+                if (!openRouterRes.ok) throw new Error(`OR Error: ${orText}`);
+                const openRouterData = JSON.parse(orText);
                 return { text: openRouterData.choices[0].message.content, engine: "OpenRouter" };
             } catch (openRouterErr) {
-                console.log(`[⚠️ OpenRouter Down] -> Switching to HF...`);
+                console.log(`[⚠️ OpenRouter Down: ${openRouterErr.message.substring(0, 40)}] -> Switching to HF...`);
                 
+                // 🏅 Tier 4: Hugging Face (FIXED MODEL TO ZEPHYR)
                 try {
                     if (!HF_KEY) throw new Error("HF Key Missing");
                     await sleep(1000);
-                    const hfRes = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
+                    const hfRes = await fetch("https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta", { // Faster loading model
                         method: "POST",
                         headers: { "Authorization": `Bearer ${HF_KEY}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ inputs: `[INST] ${promptText} [/INST]` })
+                        body: JSON.stringify({ inputs: `<|user|>\n${promptText}</s>\n<|assistant|>` }) // Proper prompt format
                     });
-                    if (!hfRes.ok) throw new Error(`HTTP ${hfRes.status}`);
-                    const hfData = await hfRes.json();
-                    return { text: hfData[0].generated_text, engine: "HuggingFace" };
+                    const hfText = await hfRes.text();
+                    if (!hfRes.ok) throw new Error(`HF Error: ${hfText}`);
+                    const hfData = JSON.parse(hfText);
+                    return { text: hfData[0].generated_text.split('<|assistant|>')[1] || hfData[0].generated_text, engine: "HuggingFace" };
                 } catch (hfErr) {
+                    console.log(`[❌ ALL ENGINES DOWN: ${hfErr.message.substring(0, 40)}]`);
                     throw new Error("CRITICAL_QUOTA_EMPTY"); 
                 }
             }
@@ -111,12 +122,12 @@ async function safeGenerate(promptText, isJson = true) {
 }
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "RAW-CODE ENGINE ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "API-FIXED RAW-CODE ENGINE ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body; 
-    console.log(`\n[🚀 Raw-Code Swarm Initiated]`);
+    console.log(`\n[🚀 Fixed API Swarm Initiated]`);
 
     try {
         let masterLogs = [];
@@ -138,7 +149,7 @@ app.post('/api/build', async (req, res) => {
                 const backupMaster = await safeGenerate(masterPrompt, true);
                 masterData = extractJson(backupMaster.text);
             } catch (criticalErr) {
-                return res.json({ success: false, error: "⚠️ ALERT: Saare 4 AI Engines ki daily limit khatam ho chuki hai!" });
+                return res.json({ success: false, error: "⚠️ ALERT: Saare 4 AI Engines ki daily limit khatam ho chuki hai! OpenRouter aur HF bhi load nahi ho rahe." });
             }
         }
 
@@ -152,12 +163,11 @@ app.post('/api/build', async (req, res) => {
             try {
                 await sleep(3000); 
 
-                // 🔥 NO JSON NEEDED HERE ANYMORE. JUST RAW TEXT! 🔥
                 const workerPrompt = `You are an Elite Developer. Project Context: "${finalPrompt}".
                 🚨 CRITICAL: YOU ARE ONLY WRITING CODE FOR ${filename}. Do not write other files.
                 Return ONLY the raw functional code. DO NOT wrap it in JSON. DO NOT use markdown blocks like \`\`\`javascript. Just the pure code text.`;
                 
-                const generatedData = await safeGenerate(workerPrompt, false); // isJson = false
+                const generatedData = await safeGenerate(workerPrompt, false); 
                 let currentCode = cleanRawCode(generatedData.text);
                 
                 currentCode = `/* \n * 🚀 Code Generated by Mantu AI \n * 🧠 Active Engine: ${generatedData.engine}\n */\n\n` + currentCode;
@@ -190,7 +200,7 @@ app.post('/api/build', async (req, res) => {
                     await sleep(2000);
                     const qaPrompt = `Fix this terminal error:\n${executionError}\n\nCode:\n${currentCode}\nReturn ONLY the raw fixed code. DO NOT wrap it in JSON. NO markdown blocks.`;
                     
-                    const qaData = await safeGenerate(qaPrompt, false); // isJson = false
+                    const qaData = await safeGenerate(qaPrompt, false);
                     let fixedCode = cleanRawCode(qaData.text);
                     
                     fixedCode = `/* \n * 🚀 Code Fixed by Mantu AI \n * 🧠 QA Engine: ${qaData.engine}\n */\n\n` + fixedCode;
@@ -206,18 +216,6 @@ app.post('/api/build', async (req, res) => {
                     return res.json({ success: false, error: "⚠️ ALERT: Saare 4 Engines limit cross kar chuke hain! Kal wapas try karein." });
                 }
                 masterLogs.push({ agent: "System Crash", status: "API Exhausted", details: `Failed on ${filename}.` });
-            }
-        }
-
-        if (dependencies.length > 0) {
-            masterLogs.push({ agent: "Dependency Manager", status: "Installing Packages", details: `Running npm install...` });
-            try {
-                try { await fs.access(path.join(WORKSPACE_DIR, 'package.json')); } 
-                catch { await fs.writeFile(path.join(WORKSPACE_DIR, 'package.json'), JSON.stringify({ name: "mantu-app", version: "1.0.0" })); }
-                await execPromise(`npm install ${dependencies.join(' ')}`, { cwd: WORKSPACE_DIR });
-                masterLogs.push({ agent: "Dependency Manager", status: "Installation Complete", details: "Packages installed." });
-            } catch (npmErr) {
-                masterLogs.push({ agent: "Dependency Manager", status: "Install Failed", details: "Could not install packages." });
             }
         }
 
