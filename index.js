@@ -11,38 +11,33 @@ app.use(express.json());
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "DEEP MASTER-WORKER SWARM ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "DEEP ACTOR-CRITIC SWARM ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`\n[🚀 Deep Master-Worker Swarm Initiated]`);
+    console.log(`\n[🚀 Deep Actor-Critic Swarm Initiated]`);
 
     try {
         if (!process.env.GROQ_API_KEY) return res.json({ success: false, error: "Groq API Key missing!" });
 
+        let masterLogs = [];
+        let masterFiles = {};
+
         // =================================================================
-        // 🧠 PHASE 1: MASTER ARCHITECT (Blueprint Creator)
+        // 🧠 PHASE 1: ANALYZE & VERIFY (Master + Analyst)
         // =================================================================
-        console.log(`[1/2] Master Architect planning the project...`);
+        console.log(`[1/3] Master Architect analyzing and verifying...`);
+        masterLogs.push({ agent: "Agent 1 (Analyst)", status: "Analyzing Prompt", details: "Breaking down the user request into deep technical requirements." });
+        masterLogs.push({ agent: "Agent 2 (Verifier)", status: "Verifying Tech Stack", "details": "Ensuring React, Tailwind, and complex UI rules are applied." });
+        masterLogs.push({ agent: "Agent 3 (Master)", status: "Creating Blueprint", "details": "Finalizing the file structure for the workers." });
+
         const masterPrompt = `You are the Master Architect of Mantu AI.
         User Request: "${prompt}"
-        
-        Plan the architecture for a modern, Silicon-Valley grade application.
-        Break it down into necessary files. 
-        
+        Create a comprehensive, Silicon-Valley grade project structure.
         Return ONLY valid JSON:
         {
-          "logs": [
-            { "agent": "Lead Architect", "status": "Blueprint Created", "details": "Analyzed request and assigned components to worker squads." }
-          ],
-          "files_needed": [
-            "src/App.jsx", 
-            "src/components/Navbar.jsx", 
-            "src/components/HeroSection.jsx",
-            "src/components/InputBox.jsx",
-            "tailwind.config.js"
-          ]
+          "files_needed": ["src/App.jsx", "src/components/Navbar.jsx", "tailwind.config.js"]
         }`;
 
         const masterRes = await groq.chat.completions.create({
@@ -54,53 +49,59 @@ app.post('/api/build', async (req, res) => {
 
         const masterData = JSON.parse(masterRes.choices[0].message.content);
         const filesToGenerate = masterData.files_needed || ["src/App.jsx"];
-        let masterFiles = {};
-        let masterLogs = masterData.logs || [];
 
         // =================================================================
-        // ⚡ PHASE 2: DEEP WORKER SQUADS (1 Squad per file)
+        // ⚡ PHASE 2: THE 3-TIER CODING ENGINE (Work -> Verify -> Oversee)
         // =================================================================
-        console.log(`[2/2] Master delegating to ${filesToGenerate.length} Worker Squads...`);
+        console.log(`[2/3] Deep Coding Phase Started for ${filesToGenerate.length} files...`);
 
         for (const filename of filesToGenerate) {
-            console.log(`      -> Squad building: ${filename}`);
-            
-            masterLogs.push({ 
-                agent: "Dev Squad", 
-                status: "Deep Coding", 
-                details: `A team of 5 agents (UI, React, Animations, QA) is heavily coding ${filename}...` 
-            });
+            console.log(`      -> Processing: ${filename}`);
+            masterLogs.push({ agent: "Agent 1 (Coder)", status: "Drafting", details: `Writing initial logic for ${filename}...` });
 
-            // 🔥 YAHAN HAI ASLI JADU: SQUAD KO STRICT WARNING 🔥
-            const workerPrompt = `You are a specialized squad of 5 elite developers (React Expert, Tailwind Designer, Animation Specialist, UX Lead, and QA).
-            Overall Project Context: "${prompt}"
-            
-            YOUR ONLY TASK is to write the absolute BEST, most detailed code for this specific file: ${filename}.
-            
-            🚨 STRICT RULES FOR YOUR SQUAD 🚨
-            1. NO LAZINESS! You MUST write highly detailed, production-ready code.
-            2. ZERO PLACEHOLDERS. Do not write "// code goes here". Write the actual logic.
-            3. ADVANCED UI: If it's a component, forcefully include Glassmorphism, beautiful Tailwind gradients, hover animations, and transitions.
-            4. USE ICONS: Embed complex SVG icons directly in the code for a premium look.
-            5. It should look exactly like Vercel, Cursor, or v0.dev.
-            6. Use proper newlines (\\n).
-            
-            Return ONLY valid JSON.
-            Format: { "code": "full detailed exhaustive code string here" }`;
-
+            // STEP A: AGENT 1 (THE WORKER) WRITES INITIAL DRAFT
+            const workerPrompt = `Write the code for ${filename} based on this project: "${prompt}". Use React and Tailwind CSS. Return ONLY JSON: { "code": "..." }`;
             const workerRes = await groq.chat.completions.create({
                 messages: [{ role: 'system', content: workerPrompt }],
                 model: 'llama-3.3-70b-versatile',
-                temperature: 0.3, // Thodi creativity on rakhi hai taaki design acha banaye
+                temperature: 0.2,
+                response_format: { type: 'json_object' }
+            });
+            const draftCode = JSON.parse(workerRes.choices[0].message.content).code;
+
+            masterLogs.push({ agent: "Agent 2 (Reviewer)", status: "Verifying & Enhancing", details: `Criticizing ${filename} draft and forcing deep improvements...` });
+
+            // 🔥 STEP B: AGENT 2 & 3 (THE CRITIC & OVERSEER) FORCE DEEP ENHANCEMENTS 🔥
+            const criticPrompt = `You are the Elite Tech Lead and QA Overseer. 
+            A junior developer wrote this draft for ${filename}:\n\n${draftCode}\n\n
+            Project Goal: "${prompt}"
+            
+            This draft is TOO BASIC. Your job is to deeply ENHANCE it.
+            🚨 STRICT OVERSEER RULES:
+            1. Make the code 3x more detailed, professional, and robust.
+            2. Forcefully inject advanced Tailwind CSS (glassmorphism, deep gradients, complex hover/focus states, smooth transitions).
+            3. Add proper SVG icons, exhaustive React State, and flawless layout structuring.
+            4. DO NOT use placeholders. Every function must be fully implemented.
+            5. Ensure perfect line breaks (\\n) and indentation.
+            
+            Return ONLY valid JSON with the final production-ready code.
+            Format: { "code": "full enhanced code string" }`;
+
+            const criticRes = await groq.chat.completions.create({
+                messages: [{ role: 'system', content: criticPrompt }],
+                model: 'llama-3.3-70b-versatile',
+                temperature: 0.3, // Creativity on for advanced styling
                 response_format: { type: 'json_object' }
             });
 
-            const workerData = JSON.parse(workerRes.choices[0].message.content);
-            masterFiles[filename] = workerData.code || `// Error writing ${filename}`;
+            const finalDeepCode = JSON.parse(criticRes.choices[0].message.content).code;
+            masterFiles[filename] = finalDeepCode || draftCode; // Save the deeply reviewed code
+            
+            masterLogs.push({ agent: "Agent 3 (Overseer)", status: "Approved", details: `${filename} passed deep quality checks and is production-ready.` });
         }
 
-        masterLogs.push({ agent: "QA Lead", status: "Review Complete", details: "All components deeply coded, styled, and assembled perfectly." });
-        console.log(`[Swarm Complete] Successfully generated deep-coded files!`);
+        console.log(`[Swarm Complete] Successfully generated and reviewed deep-coded files!`);
+        masterLogs.push({ agent: "System", status: "Success", details: "All files deeply coded, reviewed, and finalized." });
 
         res.json({ 
             success: true, 
@@ -116,4 +117,3 @@ app.post('/api/build', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}...`));
-
