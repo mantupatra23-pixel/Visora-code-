@@ -14,7 +14,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 
-// 🔑 API KEYS
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null; 
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
@@ -25,7 +24,8 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const MASTER_MODEL = 'llama-3.3-70b-versatile'; 
 const GEMINI_WORKER = 'gemini-1.5-flash'; 
-const GROQ_WORKER = 'llama-3.1-8b-instant';
+// 🔥 UPGRADED GROQ FALLBACK TO MOST POWERFUL MODEL 🔥
+const GROQ_WORKER = 'llama-3.3-70b-versatile'; 
 
 const extractJson = (text) => {
     try {
@@ -37,16 +37,19 @@ const extractJson = (text) => {
     }
 };
 
+// 🔥 NEW: Raw Code Cleaner (No JSON Needed for Workers!) 🔥
+const cleanRawCode = (text) => {
+    return text.replace(/```[a-zA-Z]*\n/gi, '').replace(/```/gi, '').trim();
+};
+
 const initWorkspace = async () => {
     try { await fs.mkdir(WORKSPACE_DIR, { recursive: true }); } catch (e) {}
 };
 initWorkspace();
 
-// 🔥 THE 4-TIER IMMORTAL ENGINE (WITH ERROR LOGGING) 🔥
 async function safeGenerate(promptText, isJson = true) {
-    // 🥇 Tier 1: Gemini
     try {
-        if (!genAI) throw new Error("Gemini API Key Missing");
+        if (!genAI) throw new Error("Gemini Key Missing");
         const geminiModel = genAI.getGenerativeModel({ 
             model: GEMINI_WORKER,
             generationConfig: isJson ? { responseMimeType: "application/json" } : {}
@@ -54,22 +57,23 @@ async function safeGenerate(promptText, isJson = true) {
         const res = await geminiModel.generateContent(promptText);
         return { text: res.response.text(), engine: "Gemini" };
     } catch (geminiErr) {
-        console.log(`[⚠️ Gemini Down: ${geminiErr.message.substring(0,30)}] -> Switching to Groq...`);
+        console.log(`[⚠️ Gemini Down] -> Switching to Groq...`);
         
-        // 🥈 Tier 2: Groq
         try {
             await sleep(1000);
             const groqRes = await groq.chat.completions.create({ 
-                messages: [{ role: 'user', content: promptText }], 
+                messages: [
+                    { role: 'system', content: isJson ? "Output valid JSON only." : "Output ONLY raw code. No markdown, no explanations." },
+                    { role: 'user', content: promptText }
+                ], 
                 model: GROQ_WORKER, 
                 temperature: 0.2, 
                 response_format: isJson ? { type: 'json_object' } : null
             });
             return { text: groqRes.choices[0].message.content, engine: "Groq" };
         } catch (groqErr) {
-            console.log(`[⚠️ Groq Down: ${groqErr.message.substring(0,30)}] -> Switching to OpenRouter...`);
+            console.log(`[⚠️ Groq Down] -> Switching to OpenRouter...`);
             
-            // 🥉 Tier 3: OpenRouter
             try {
                 if (!OPENROUTER_KEY) throw new Error("OpenRouter Key Missing");
                 await sleep(1000);
@@ -78,16 +82,15 @@ async function safeGenerate(promptText, isJson = true) {
                     headers: { "Authorization": `Bearer ${OPENROUTER_KEY}`, "Content-Type": "application/json" },
                     body: JSON.stringify({
                         model: "meta-llama/llama-3-8b-instruct:free", 
-                        messages: [{ role: "user", content: promptText + (isJson ? " MUST RETURN JSON ONLY." : "") }]
+                        messages: [{ role: "user", content: promptText + (isJson ? " MUST RETURN JSON ONLY." : " MUST RETURN RAW CODE ONLY. NO MARKDOWN.") }]
                     })
                 });
                 if (!openRouterRes.ok) throw new Error(`HTTP ${openRouterRes.status}`);
                 const openRouterData = await openRouterRes.json();
                 return { text: openRouterData.choices[0].message.content, engine: "OpenRouter" };
             } catch (openRouterErr) {
-                console.log(`[⚠️ OpenRouter Down: ${openRouterErr.message.substring(0,30)}] -> Switching to HF...`);
+                console.log(`[⚠️ OpenRouter Down] -> Switching to HF...`);
                 
-                // 🏅 Tier 4: Hugging Face
                 try {
                     if (!HF_KEY) throw new Error("HF Key Missing");
                     await sleep(1000);
@@ -100,7 +103,6 @@ async function safeGenerate(promptText, isJson = true) {
                     const hfData = await hfRes.json();
                     return { text: hfData[0].generated_text, engine: "HuggingFace" };
                 } catch (hfErr) {
-                    console.log(`[❌ ALL ENGINES DOWN]`);
                     throw new Error("CRITICAL_QUOTA_EMPTY"); 
                 }
             }
@@ -109,17 +111,17 @@ async function safeGenerate(promptText, isJson = true) {
 }
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "ENGINE-TRACKER SWARM ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "RAW-CODE ENGINE ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body; 
-    console.log(`\n[🚀 Tracked Swarm Initiated]`);
+    console.log(`\n[🚀 Raw-Code Swarm Initiated]`);
 
     try {
         let masterLogs = [];
         let masterFiles = {};
-        let finalPrompt = prompt + "\n[CRITICAL: Use modern standards. DO NOT output markdown outside of JSON if requested as JSON.]";
+        let finalPrompt = prompt + "\n[CRITICAL: Use modern standards.]";
 
         masterLogs.push({ agent: "Omni-Master", status: "Planning Blueprint", details: "Designing architecture..." });
         
@@ -136,7 +138,7 @@ app.post('/api/build', async (req, res) => {
                 const backupMaster = await safeGenerate(masterPrompt, true);
                 masterData = extractJson(backupMaster.text);
             } catch (criticalErr) {
-                return res.json({ success: false, error: "⚠️ ALERT: Saare 4 AI Engines ki daily limit khatam ho chuki hai! Aapko kal tak wait karna padega ya naye API keys daalne honge." });
+                return res.json({ success: false, error: "⚠️ ALERT: Saare 4 AI Engines ki daily limit khatam ho chuki hai!" });
             }
         }
 
@@ -150,18 +152,18 @@ app.post('/api/build', async (req, res) => {
             try {
                 await sleep(3000); 
 
+                // 🔥 NO JSON NEEDED HERE ANYMORE. JUST RAW TEXT! 🔥
                 const workerPrompt = `You are an Elite Developer. Project Context: "${finalPrompt}".
                 🚨 CRITICAL: YOU ARE ONLY WRITING CODE FOR ${filename}. Do not write other files.
-                Return ONLY JSON: { "code": "full detailed code here" }`;
+                Return ONLY the raw functional code. DO NOT wrap it in JSON. DO NOT use markdown blocks like \`\`\`javascript. Just the pure code text.`;
                 
-                const generatedData = await safeGenerate(workerPrompt, true);
-                let currentCode = extractJson(generatedData.text)?.code || generatedData.text;
+                const generatedData = await safeGenerate(workerPrompt, false); // isJson = false
+                let currentCode = cleanRawCode(generatedData.text);
                 
-                // 🔥 THE WATERMARK FEATURE: Kaunsa engine use hua! 🔥
                 currentCode = `/* \n * 🚀 Code Generated by Mantu AI \n * 🧠 Active Engine: ${generatedData.engine}\n */\n\n` + currentCode;
                 
                 masterLogs.push({ 
-                    agent: `${generatedData.engine} Worker`, // 🔥 UI me agent ka naam change hoga
+                    agent: `${generatedData.engine} Worker`, 
                     status: "Deep Coding", 
                     details: `Code successfully written by ${generatedData.engine} engine.` 
                 });
@@ -186,12 +188,11 @@ app.post('/api/build', async (req, res) => {
 
                 if (executionError) {
                     await sleep(2000);
-                    const qaPrompt = `Fix this terminal error:\n${executionError}\n\nCode:\n${currentCode}\nReturn ONLY JSON: { "code": "fixed code" }`;
+                    const qaPrompt = `Fix this terminal error:\n${executionError}\n\nCode:\n${currentCode}\nReturn ONLY the raw fixed code. DO NOT wrap it in JSON. NO markdown blocks.`;
                     
-                    const qaData = await safeGenerate(qaPrompt, true);
-                    let fixedCode = extractJson(qaData.text)?.code || currentCode;
+                    const qaData = await safeGenerate(qaPrompt, false); // isJson = false
+                    let fixedCode = cleanRawCode(qaData.text);
                     
-                    // Update watermark for QA
                     fixedCode = `/* \n * 🚀 Code Fixed by Mantu AI \n * 🧠 QA Engine: ${qaData.engine}\n */\n\n` + fixedCode;
 
                     await fs.writeFile(absoluteFilePath, fixedCode);
