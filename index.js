@@ -14,9 +14,9 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 
-// 🔑 API KEYS INITIALIZATION
+// 🔑 API KEYS
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY); 
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null; 
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
 const HF_KEY = process.env.HF_API_KEY;
 
@@ -42,10 +42,11 @@ const initWorkspace = async () => {
 };
 initWorkspace();
 
-// 🔥 THE 4-TIER IMMORTAL ENGINE 🔥
+// 🔥 THE 4-TIER IMMORTAL ENGINE (WITH ERROR LOGGING) 🔥
 async function safeGenerate(promptText, isJson = true) {
-    // 🥇 Tier 1: Gemini (First Choice)
+    // 🥇 Tier 1: Gemini
     try {
+        if (!genAI) throw new Error("Gemini API Key Missing");
         const geminiModel = genAI.getGenerativeModel({ 
             model: GEMINI_WORKER,
             generationConfig: isJson ? { responseMimeType: "application/json" } : {}
@@ -53,22 +54,22 @@ async function safeGenerate(promptText, isJson = true) {
         const res = await geminiModel.generateContent(promptText);
         return { text: res.response.text(), engine: "Gemini" };
     } catch (geminiErr) {
-        console.log(`[⚠️ Gemini Down] -> Switching to Groq...`);
+        console.log(`[⚠️ Gemini Down: ${geminiErr.message.substring(0,30)}] -> Switching to Groq...`);
         
-        // 🥈 Tier 2: Groq Llama 3 (Second Choice)
+        // 🥈 Tier 2: Groq
         try {
             await sleep(1000);
             const groqRes = await groq.chat.completions.create({ 
-                messages: [{ role: 'system', content: promptText }], 
+                messages: [{ role: 'user', content: promptText }], 
                 model: GROQ_WORKER, 
                 temperature: 0.2, 
                 response_format: isJson ? { type: 'json_object' } : null
             });
             return { text: groqRes.choices[0].message.content, engine: "Groq" };
         } catch (groqErr) {
-            console.log(`[⚠️ Groq Down] -> Switching to OpenRouter...`);
+            console.log(`[⚠️ Groq Down: ${groqErr.message.substring(0,30)}] -> Switching to OpenRouter...`);
             
-            // 🥉 Tier 3: OpenRouter (Your New API!)
+            // 🥉 Tier 3: OpenRouter
             try {
                 if (!OPENROUTER_KEY) throw new Error("OpenRouter Key Missing");
                 await sleep(1000);
@@ -76,28 +77,31 @@ async function safeGenerate(promptText, isJson = true) {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${OPENROUTER_KEY}`, "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        model: "meta-llama/llama-3-8b-instruct:free", // Using free model on OpenRouter
-                        messages: [{ role: "system", content: promptText }]
+                        model: "meta-llama/llama-3-8b-instruct:free", 
+                        messages: [{ role: "user", content: promptText + (isJson ? " MUST RETURN JSON ONLY." : "") }]
                     })
                 });
+                if (!openRouterRes.ok) throw new Error(`HTTP ${openRouterRes.status}`);
                 const openRouterData = await openRouterRes.json();
                 return { text: openRouterData.choices[0].message.content, engine: "OpenRouter" };
             } catch (openRouterErr) {
-                console.log(`[⚠️ OpenRouter Down] -> Switching to Hugging Face...`);
+                console.log(`[⚠️ OpenRouter Down: ${openRouterErr.message.substring(0,30)}] -> Switching to HF...`);
                 
-                // 🏅 Tier 4: Hugging Face (Your Ultimate Backup!)
+                // 🏅 Tier 4: Hugging Face
                 try {
                     if (!HF_KEY) throw new Error("HF Key Missing");
                     await sleep(1000);
                     const hfRes = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
                         method: "POST",
                         headers: { "Authorization": `Bearer ${HF_KEY}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ inputs: promptText })
+                        body: JSON.stringify({ inputs: `[INST] ${promptText} [/INST]` })
                     });
+                    if (!hfRes.ok) throw new Error(`HTTP ${hfRes.status}`);
                     const hfData = await hfRes.json();
                     return { text: hfData[0].generated_text, engine: "HuggingFace" };
                 } catch (hfErr) {
-                    throw new Error("CRITICAL_QUOTA_EMPTY"); // Sab fail ho gaye toh hi error aayega
+                    console.log(`[❌ ALL ENGINES DOWN]`);
+                    throw new Error("CRITICAL_QUOTA_EMPTY"); 
                 }
             }
         }
@@ -105,12 +109,12 @@ async function safeGenerate(promptText, isJson = true) {
 }
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "4-ENGINE (GEMINI+GROQ+OPENROUTER+HF) ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "ENGINE-TRACKER SWARM ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body; 
-    console.log(`\n[🚀 4-Engine Immortal Swarm Initiated]`);
+    console.log(`\n[🚀 Tracked Swarm Initiated]`);
 
     try {
         let masterLogs = [];
@@ -128,12 +132,11 @@ app.post('/api/build', async (req, res) => {
             const masterRes = await groq.chat.completions.create({ messages: [{ role: 'system', content: masterPrompt }], model: MASTER_MODEL, temperature: 0.1, response_format: { type: 'json_object' } });
             masterData = JSON.parse(masterRes.choices[0].message.content);
         } catch (e) {
-            masterLogs.push({ agent: "System Alert", status: "Master Engine Switched", details: "Main master exhausted. Engaging 4-Tier Fallback..." });
             try {
                 const backupMaster = await safeGenerate(masterPrompt, true);
                 masterData = extractJson(backupMaster.text);
             } catch (criticalErr) {
-                return res.json({ success: false, error: "⚠️ ALERT: Saare 4 AI Engines (Gemini, Groq, OpenRouter, HF) ki limit khatam ho chuki hai! Kripya 24 ghante baad try karein." });
+                return res.json({ success: false, error: "⚠️ ALERT: Saare 4 AI Engines ki daily limit khatam ho chuki hai! Aapko kal tak wait karna padega ya naye API keys daalne honge." });
             }
         }
 
@@ -147,8 +150,6 @@ app.post('/api/build', async (req, res) => {
             try {
                 await sleep(3000); 
 
-                masterLogs.push({ agent: `${techStack} Dev`, status: "Deep Coding", details: `Writing elite logic for ${filename}...` });
-                
                 const workerPrompt = `You are an Elite Developer. Project Context: "${finalPrompt}".
                 🚨 CRITICAL: YOU ARE ONLY WRITING CODE FOR ${filename}. Do not write other files.
                 Return ONLY JSON: { "code": "full detailed code here" }`;
@@ -156,7 +157,14 @@ app.post('/api/build', async (req, res) => {
                 const generatedData = await safeGenerate(workerPrompt, true);
                 let currentCode = extractJson(generatedData.text)?.code || generatedData.text;
                 
-                masterLogs.push({ agent: "Engine Router", status: "Engine Used", details: `Code generated successfully using ${generatedData.engine} engine.` });
+                // 🔥 THE WATERMARK FEATURE: Kaunsa engine use hua! 🔥
+                currentCode = `/* \n * 🚀 Code Generated by Mantu AI \n * 🧠 Active Engine: ${generatedData.engine}\n */\n\n` + currentCode;
+                
+                masterLogs.push({ 
+                    agent: `${generatedData.engine} Worker`, // 🔥 UI me agent ka naam change hoga
+                    status: "Deep Coding", 
+                    details: `Code successfully written by ${generatedData.engine} engine.` 
+                });
 
                 const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
                 await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true });
@@ -178,20 +186,23 @@ app.post('/api/build', async (req, res) => {
 
                 if (executionError) {
                     await sleep(2000);
-                    masterLogs.push({ agent: "QA Hacker", status: "Hunting Bugs", details: "Auto-fixing code..." });
                     const qaPrompt = `Fix this terminal error:\n${executionError}\n\nCode:\n${currentCode}\nReturn ONLY JSON: { "code": "fixed code" }`;
                     
                     const qaData = await safeGenerate(qaPrompt, true);
-                    currentCode = extractJson(qaData.text)?.code || currentCode;
+                    let fixedCode = extractJson(qaData.text)?.code || currentCode;
                     
-                    await fs.writeFile(absoluteFilePath, currentCode);
-                    masterLogs.push({ agent: "QA Hacker", status: "Bug Fixed", details: `Terminal error auto-healed via ${qaData.engine}.` });
+                    // Update watermark for QA
+                    fixedCode = `/* \n * 🚀 Code Fixed by Mantu AI \n * 🧠 QA Engine: ${qaData.engine}\n */\n\n` + fixedCode;
+
+                    await fs.writeFile(absoluteFilePath, fixedCode);
+                    masterLogs.push({ agent: `${qaData.engine} QA`, status: "Bug Fixed", details: `Terminal error auto-healed.` });
+                    currentCode = fixedCode;
                 }
                 masterFiles[filename] = currentCode;
 
             } catch (fileError) {
                 if (fileError.message === "CRITICAL_QUOTA_EMPTY") {
-                    return res.json({ success: false, error: "⚠️ ALERT: Saare 4 Engines (Gemini, Groq, OpenRouter, HF) limit cross kar chuke hain!" });
+                    return res.json({ success: false, error: "⚠️ ALERT: Saare 4 Engines limit cross kar chuke hain! Kal wapas try karein." });
                 }
                 masterLogs.push({ agent: "System Crash", status: "API Exhausted", details: `Failed on ${filename}.` });
             }
