@@ -13,8 +13,8 @@ app.get('/api/env', (req, res) => {
     const maskedVars = {};
     Object.keys(process.env).forEach(key => {
         const value = process.env[key];
-        if (key.includes('KEY') || key.includes('PORT') || key.includes('URL') || key.includes('ENV')) {
-            maskedVars[key] = value ? `${value.substring(0, 4)}•••••••• (Masked)` : 'NOT DEFINED';
+        if (key.includes('KEY') || key.includes('PORT') || key.includes('URL')) {
+            maskedVars[key] = value ? `${value.substring(0, 4)}••••••••` : 'NOT DEFINED';
         }
     });
     res.json({ success: true, variables: maskedVars });
@@ -22,51 +22,70 @@ app.get('/api/env', (req, res) => {
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`[🚀 Mantu AI Analyzing]: ${prompt.substring(0, 50)}...`);
+    console.log(`\n[🚀 Mantu AI Started]: ${prompt.substring(0, 30)}...`);
 
     try {
-        if (!process.env.GROQ_API_KEY) {
-            return res.json({ success: false, error: "GROQ_API_KEY missing!" });
-        }
+        if (!process.env.GROQ_API_KEY) return res.json({ success: false, error: "API Key missing!" });
 
-        // 🔥 THE ULTIMATE STRICT PROMPT 🔥
-        const systemPrompt = `You are Mantu AI, an elite React developer.
-Your ONLY job is to output a SINGLE, fully functional React component file.
+        // ==========================================
+        // 🧠 AGENT 1: THE ARCHITECT (Analysis)
+        // ==========================================
+        console.log(`[Agent 1] Analyzing and planning files...`);
+        const agent1Prompt = `You are Mantu AI Architect. Analyze this app idea: "${prompt}".
+        Decide which React component files need to be created (e.g., App.jsx, Navbar.jsx, Dashboard.jsx).
+        Return ONLY a JSON object exactly in this format:
+        {
+          "analysis": "Brief 2-sentence explanation of the architecture",
+          "files_to_create": ["src/App.jsx", "src/components/Header.jsx"]
+        }`;
 
-CRITICAL RULES (IF YOU BREAK THESE, THE APP CRASHES):
-1. NO MARKDOWN: NEVER output \`\`\`jsx or \`\`\` tags. NEVER. Output ONLY plain text code.
-2. SINGLE FILE ONLY: Combine ALL components, icons, and logic into ONE single file. DO NOT split into multiple files.
-3. STRUCTURE:
-   - Always start with: import React, { useState, useEffect } from 'react';
-   - Define all custom SVG icons next.
-   - Define all sub-components.
-   - End with: export default function App() { ... }
-4. INDENTATION: Use standard 2-space indentation. Keep it clean.
-5. NO YAPPING: Absolutely no conversational text.`;
-
-        const chatCompletion = await groq.chat.completions.create({
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: prompt }
-            ],
+        const completion1 = await groq.chat.completions.create({
+            messages: [{ role: 'system', content: agent1Prompt }],
             model: 'llama-3.3-70b-versatile',
-            temperature: 0.1, 
+            temperature: 0.1,
+            response_format: { type: 'json_object' } // FORCES OUTPUT TO BE JSON
         });
 
-        let generatedCode = chatCompletion.choices[0]?.message?.content || "";
+        const planJSON = JSON.parse(completion1.choices[0].message.content);
+        console.log(`[Agent 1] Plan Ready:`, planJSON.files_to_create);
 
-        // 🔥 AGGRESSIVE CLEANUP: Remove ANY trace of markdown 🔥
-        generatedCode = generatedCode.replace(/```(jsx|tsx|javascript|js|react)?/gi, ''); 
-        generatedCode = generatedCode.replace(/```/g, '');
-        generatedCode = generatedCode.trim();
+        // ==========================================
+        // 💻 AGENT 2: THE CODER (File-by-File Gen)
+        // ==========================================
+        console.log(`[Agent 2] Writing code for ${planJSON.files_to_create.length} files...`);
+        const agent2Prompt = `You are Mantu AI Coder. Based on the app idea: "${prompt}".
+        Write the FULL, flawless React code for the following files: ${JSON.stringify(planJSON.files_to_create)}.
+        Use Tailwind CSS for styling.
+        Return ONLY a JSON object where keys are file paths and values are the raw code strings.
+        DO NOT USE MARKDOWN IN THE CODE STRINGS. USE PROPER NEWLINES (\\n).
+        Format:
+        {
+          "src/App.jsx": "import React from 'react';\\n\\nexport default function App() {\\n  return <div>...</div>;\\n}",
+          "src/components/Header.jsx": "..."
+        }`;
 
-        res.json({ success: true, code: generatedCode });
+        const completion2 = await groq.chat.completions.create({
+            messages: [{ role: 'system', content: agent2Prompt }],
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.1,
+            response_format: { type: 'json_object' } // FORCES OUTPUT TO BE JSON
+        });
+
+        const codeJSON = JSON.parse(completion2.choices[0].message.content);
+        console.log(`[Agent 2] Code generation complete!`);
+
+        // Send both Analysis and Files to Frontend
+        res.json({ 
+            success: true, 
+            analysis: planJSON.analysis,
+            files: codeJSON 
+        });
 
     } catch (error) {
-        console.error("Groq Error:", error.message);
-        res.json({ success: false, error: `Groq AI Error: ${error.message}` });
+        console.error("Mantu Engine Error:", error.message);
+        res.json({ success: false, error: `AI Error: ${error.message}` });
     }
 });
 
-app.get('/', (req, res) => res.send("Mantu AI Backend is Live! 🚀"));
+app.get('/', (req, res) => res.send("Mantu Multi-Agent Backend Live! 🚀"));
 app.listen(process.env.PORT || 3000, () => console.log("Server running..."));
