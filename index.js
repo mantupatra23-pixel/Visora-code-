@@ -27,44 +27,44 @@ app.post('/api/build', async (req, res) => {
     try {
         if (!process.env.GROQ_API_KEY) return res.json({ success: false, error: "API Key missing!" });
 
-        // 🔥 THE 5-AGENT SWARM PROMPT 🔥
-        const systemPrompt = `You are the Mantu AI Swarm, an elite team of 5 software engineering agents working together to build a React application.
+        // 🔥 THE STRICT MILITARY-STYLE PROMPT 🔥
+        const systemPrompt = `You are the Mantu AI Swarm, an elite team of 5 software engineering agents.
         The user's request is: "${prompt}"
-
-        You must simulate the thought process of 5 different agents and then output the final code.
         
         AGENT ROLES:
-        1. Requirements Analyst: Breaks down the core features.
-        2. System Architect: Decides the file structure and component breakdown.
-        3. UI/UX Designer: Decides on the Tailwind CSS theme, colors, and layout.
-        4. State Manager: Plans React hooks (useState, useEffect) and data flow.
-        5. Senior Developer: Writes the final flawless code file-by-file.
+        1. Requirements Analyst: Breaks down core features.
+        2. System Architect: Decides the exact file structure.
+        3. UI/UX Designer: Decides Tailwind styling and theme.
+        4. State Manager: Plans React hooks and component logic.
+        5. Senior Developer: Writes the FINAL, COMPLETE CODE for ALL files.
 
-        CRITICAL: Return ONLY a valid JSON object. Do not wrap in markdown (no \`\`\`json).
-        
-        JSON STRUCTURE REQUIRED:
+        ⚠️ CRITICAL RULES FOR CODE GENERATION (IF YOU BREAK THESE, THE SYSTEM DIES) ⚠️
+        1. NO SHORTCUTS! You MUST write every single line of code. NEVER use placeholders like "// code goes here" or "// logic here". Write the full, working component.
+        2. NO MINIFICATION! You MUST format the code beautifully. Use actual newline characters ('\\n') and tabs ('\\t') inside your JSON string so the code is vertical and readable. Do NOT put everything on one line.
+        3. Return ONLY a valid JSON object. DO NOT wrap the JSON in markdown blocks (no \`\`\`json).
+
+        EXPECTED JSON FORMAT:
         {
           "agent_logs": [
-            { "agent": "Requirements Analyst", "status": "Analyzed request...", "details": "Detailed 2-3 sentence explanation of features." },
-            { "agent": "System Architect", "status": "Designed Architecture...", "details": "Detailed explanation of files created." },
-            { "agent": "UI/UX Designer", "status": "Finalized Design System...", "details": "Explanation of Tailwind classes and colors used." },
-            { "agent": "State Manager", "status": "Planned Data Flow...", "details": "Explanation of hooks used." },
-            { "agent": "Senior Developer", "status": "Code Generation Complete", "details": "Successfully generated all files." }
+            { "agent": "Requirements Analyst", "status": "Analyzed request...", "details": "..." },
+            { "agent": "System Architect", "status": "Designed Architecture...", "details": "..." },
+            { "agent": "UI/UX Designer", "status": "Finalized Design System...", "details": "..." },
+            { "agent": "State Manager", "status": "Planned Data Flow...", "details": "..." },
+            { "agent": "Senior Developer", "status": "Code Generation Complete", "details": "Successfully generated all fully-functional files." }
           ],
           "files": {
-            "src/App.jsx": "import React from 'react';\\n// FULL CODE HERE",
-            "src/components/AnyOtherFile.jsx": "// FULL CODE HERE"
+            "src/App.jsx": "import React from 'react';\\n\\nexport default function App() {\\n  return (\\n    <div className=\\"min-h-screen bg-black\\">\\n      <h1>Hello World</h1>\\n    </div>\\n  );\\n}",
+            "src/components/Navbar.jsx": "import React from 'react';\\n\\nexport default function Navbar() {\\n  return <nav className=\\"p-4\\">Nav</nav>;\\n}"
           }
         }`;
 
         const completion = await groq.chat.completions.create({
             messages: [{ role: 'system', content: systemPrompt }],
             model: 'llama-3.3-70b-versatile',
-            temperature: 0.1,
+            temperature: 0.1, // Keep it low so the AI follows rules strictly
             response_format: { type: 'json_object' }
         });
 
-        // Parse the massive JSON from our 5 agents
         const resultJSON = JSON.parse(completion.choices[0].message.content);
         console.log(`[Swarm Complete] Generated ${Object.keys(resultJSON.files || {}).length} files.`);
 
@@ -80,5 +80,5 @@ app.post('/api/build', async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send("Mantu 5-Agent Swarm Backend Live! 🚀"));
+app.get('/', (req, res) => res.send("Mantu 5-Agent Strict Backend Live! 🚀"));
 app.listen(process.env.PORT || 3000, () => console.log("Server running..."));
