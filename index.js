@@ -2,125 +2,74 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// 🔥 SIRF GROQ IMPORT KIYA HAI (Baaki sab hata diya) 🔥
 const Groq = require('groq-sdk');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { Mistral } = require('@mistralai/mistralai');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "30-AGENT TRI-ENGINE SWARM ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "30-AGENT GROQ SWARM ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`\n[🚀 Mantu AI Swarm Initiated]: ${prompt.substring(0, 30)}...`);
+    console.log(`\n[🚀 Groq Master Swarm Initiated]: ${prompt.substring(0, 30)}...`);
 
-    let masterAgentLogs = [];
-    let masterFiles = {};
-
-    // ==========================================
-    // 🧠 1. GEMINI (Planning Department)
-    // ==========================================
     try {
-        if (process.env.GEMINI_API_KEY) {
-            console.log(`[1/3] Calling Gemini API...`);
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            // Safe stable model string that never 404s
-            const geminiModel = genAI.getGenerativeModel({ model: "gemini-pro" }); 
-
-            const geminiPrompt = `You are the Planning Department of Mantu AI. Task: "${prompt}". Generate exactly 5 agent logs outlining the planning phase (Architecture, Features). Return ONLY a JSON object with a "logs" array. Format: { "logs": [ { "agent": "Product Manager", "status": "Defining Scope", "details": "..." } ] }`;
-
-            const geminiResult = await geminiModel.generateContent(geminiPrompt);
-            let cleanText = geminiResult.response.text().replace(/```(json)?/gi, '').replace(/```/g, '').trim();
-            const geminiData = JSON.parse(cleanText);
-            masterAgentLogs = [...masterAgentLogs, ...(geminiData.logs || [])];
-        } else {
-            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Gemini Key missing." });
+        if (!process.env.GROQ_API_KEY) {
+            return res.json({ success: false, error: "Groq API Key is missing in Render!" });
         }
-    } catch (error) {
-        console.error("Gemini Error:", error.message);
-        masterAgentLogs.push({ agent: "Gemini System", status: "API Failed", details: error.message });
-    }
 
-    // ==========================================
-    // ⚡ 2. GROQ (Frontend Department)
-    // ==========================================
-    try {
-        if (process.env.GROQ_API_KEY) {
-            console.log(`[2/3] Calling Groq API...`);
-            const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        // 🧠 THE MASTER SWARM PROMPT (Groq akela 30 agents banega)
+        const systemPrompt = `You are Mantu AI, a massive swarm of 30 specialized AI agents (Lead Architects, UI/UX Designers, React Developers, Security Experts, QA Testers).
+        Task: "${prompt}"
+        
+        Simulate the workflow of these 30 agents collaborating. 
+        1. Generate exactly 15 detailed agent logs representing different departments analyzing, planning, designing, and coding.
+        2. Generate the FULL React code for all necessary files (App.jsx, Components, Tailwind Config).
+        
+        ⚠️ CRITICAL CODING RULES ⚠️
+        1. DO NOT MINIFY THE CODE! Every import, HTML tag, and logic block MUST be on a new line.
+        2. Use proper newline characters ('\\n') in the JSON string.
+        3. Return ONLY a valid JSON object. NO markdown formatting.
+        
+        Format: {
+          "logs": [
+            { "agent": "Lead Architect", "status": "Planning", "details": "Designed system..." },
+            { "agent": "UI Designer", "status": "Styling", "details": "Applied Tailwind..." },
+            { "agent": "Senior React Dev", "status": "Coding", "details": "Wrote logic..." }
+          ],
+          "files": {
+            "src/App.jsx": "import React from 'react';\\n\\nexport default function App() {\\n  return <div>Hello</div>;\\n}",
+            "tailwind.config.js": "module.exports = {\\n  content: []\\n}"
+          }
+        }`;
 
-            const groqPrompt = `You are the Frontend Department of Mantu AI. Task: "${prompt}". 
-            Generate exactly 5 agent logs for frontend work, and the FULL React code files.
+        const groqResult = await groq.chat.completions.create({
+            messages: [{ role: 'system', content: systemPrompt }],
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.1,
+            response_format: { type: 'json_object' }
+        });
 
-            CRITICAL CODING RULES:
-            1. DO NOT MINIFY THE CODE! 
-            2. You MUST use actual newline characters ('\\n') and proper indentation in the code strings.
-            3. Return ONLY valid JSON. No markdown tags.
+        const data = JSON.parse(groqResult.choices[0].message.content);
+        
+        console.log(`[Swarm Complete] Logs generated: ${data.logs?.length}. Files created: ${Object.keys(data.files || {}).length}`);
 
-            Format: { "logs": [ { "agent": "UI Designer", "status": "Styling", "details": "..." } ], "files": { "src/App.jsx": "import React from 'react';\\n\\nexport default function App() {\\n  return <div>Hello</div>;\\n}" } }`;
+        res.json({ 
+            success: true, 
+            logs: data.logs || [], 
+            files: data.files || {} 
+        });
 
-            const groqResult = await groq.chat.completions.create({
-                messages: [{ role: 'system', content: groqPrompt }],
-                model: 'llama-3.3-70b-versatile',
-                temperature: 0.1,
-                response_format: { type: 'json_object' }
-            });
-            const groqData = JSON.parse(groqResult.choices[0].message.content);
-            masterAgentLogs = [...masterAgentLogs, ...(groqData.logs || [])];
-            masterFiles = { ...masterFiles, ...(groqData.files || {}) };
-        } else {
-            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Groq Key missing." });
-        }
     } catch (error) {
         console.error("Groq Error:", error.message);
-        masterAgentLogs.push({ agent: "Groq System", status: "API Failed", details: error.message });
+        res.json({ success: false, error: `Groq Swarm Error: ${error.message}` });
     }
-
-    // ==========================================
-    // 🛡️ 3. MISTRAL (Backend & QA Department)
-    // ==========================================
-    try {
-        if (process.env.MISTRAL_API_KEY) {
-            console.log(`[3/3] Calling Mistral API...`);
-            const mistral = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
-            const mistralPrompt = `You are the Backend & QA Department of Mantu AI. Task: "${prompt}". Generate exactly 2 logs for Setup and Security. Generate config files with PROPER NEWLINES (\\n), DO NOT MINIFY. Return ONLY valid JSON. Format: { "logs": [ { "agent": "Security Lead", "status": "Testing", "details": "..." } ], "files": { "tailwind.config.js": "..." } }`;
-
-            const mistralResult = await mistral.chat.complete({
-                model: 'mistral-large-latest',
-                messages: [{ role: 'user', content: mistralPrompt }],
-                temperature: 0.1,
-                responseFormat: { type: 'json_object' }
-            });
-            const mistralData = JSON.parse(mistralResult.choices[0].message.content);
-            masterAgentLogs = [...masterAgentLogs, ...(mistralData.logs || [])];
-            masterFiles = { ...masterFiles, ...(mistralData.files || {}) };
-        } else {
-            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Mistral Key missing." });
-        }
-    } catch (error) {
-        console.error("Mistral Error:", error.message);
-        masterAgentLogs.push({ agent: "Mistral System", status: "API Failed", details: error.message });
-    }
-
-    // ==========================================
-    // 🎯 FINAL ASSEMBLY & SAFETY CHECK
-    // ==========================================
-    console.log(`[Swarm Complete] Agents Deployed: ${masterAgentLogs.length}. Files: ${Object.keys(masterFiles).length}`);
-
-    if (Object.keys(masterFiles).length === 0) {
-        return res.json({ 
-            success: false, 
-            error: "All APIs failed. Please check your API Keys in Render Dashboard.",
-            logs: masterAgentLogs,
-            files: { "SystemLog.txt": "// All API calls failed. No files generated." }
-        });
-    }
-
-    res.json({ success: true, logs: masterAgentLogs, files: masterFiles });
 });
 
 const PORT = process.env.PORT || 3000;
