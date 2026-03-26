@@ -18,13 +18,11 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY); 
 
 const WORKSPACE_DIR = './mantu_workspace';
-
-// 🔥 SMART API THROTTLER: 6 Seconds wait to NEVER hit the 15 RPM Limit 🔥
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 🔥 FIXED MODELS: Using 1.5-flash for massive free tier limits 🔥
 const MASTER_MODEL = 'llama-3.3-70b-versatile'; 
-const WORKER_MODEL = 'gemini-1.5-flash'; 
+const GEMINI_WORKER = 'gemini-1.5-flash'; 
+const GROQ_WORKER = 'llama-3.1-8b-instant'; // Lighter Groq model for fallback
 
 const extractJson = (text) => {
     try {
@@ -41,13 +39,44 @@ const initWorkspace = async () => {
 };
 initWorkspace();
 
+// 🔥 THE IMMORTAL GENERATOR ENGINE 🔥
+// Ye function pehle Gemini try karega, fail hua toh Groq try karega.
+async function safeGenerate(promptText, isJson = true) {
+    try {
+        // Attempt 1: Google Gemini
+        const geminiModel = genAI.getGenerativeModel({ 
+            model: GEMINI_WORKER,
+            generationConfig: isJson ? { responseMimeType: "application/json" } : {}
+        });
+        const res = await geminiModel.generateContent(promptText);
+        let text = res.response.text();
+        return { text: text, engine: "Gemini" };
+    } catch (geminiErr) {
+        console.log(`[⚠️ Gemini Failed: ${geminiErr.message.substring(0, 50)}] -> Switching to Groq Fallback...`);
+        
+        // Attempt 2: Fallback to Groq Llama 3
+        try {
+            await sleep(2000); // Short pause before switching engines
+            const groqRes = await groq.chat.completions.create({ 
+                messages: [{ role: 'system', content: promptText }], 
+                model: GROQ_WORKER, 
+                temperature: 0.2, 
+                response_format: isJson ? { type: 'json_object' } : null
+            });
+            return { text: groqRes.choices[0].message.content, engine: "Groq" };
+        } catch (groqErr) {
+            throw new Error(`Both Gemini and Groq APIs are exhausted! Groq Error: ${groqErr.message.substring(0, 50)}`);
+        }
+    }
+}
+
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "BULLETPROOF HYBRID SWARM ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "IMMORTAL AUTO-FALLBACK SWARM ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt, isEdit } = req.body; 
-    console.log(`\n[🚀 Bulletproof Hybrid Swarm Initiated]`);
+    console.log(`\n[🚀 Immortal Fallback Swarm Initiated]`);
 
     try {
         if (!process.env.GROQ_API_KEY || !process.env.GEMINI_API_KEY) {
@@ -60,49 +89,48 @@ app.post('/api/build', async (req, res) => {
         let finalPrompt = prompt + "\n[CRITICAL: Use modern standards. DO NOT output markdown outside of JSON.]";
 
         // =================================================================
-        // 🧠 MASTER ARCHITECT (GROQ)
+        // 🧠 MASTER ARCHITECT (GROQ MAIN)
         // =================================================================
-        masterLogs.push({ agent: "Omni-Master", status: "Planning Blueprint", details: "Groq is designing architecture..." });
+        masterLogs.push({ agent: "Omni-Master", status: "Planning Blueprint", details: "Designing architecture..." });
         
         const masterPrompt = `You are the Omni-Language Master. Request: "${finalPrompt}"
         Determine Tech Stack, EXACT file paths with nested folders, and NPM packages.
         Return ONLY JSON: { "tech_stack": "...", "files_needed": ["src/App.jsx"], "dependencies": ["axios"] }`;
 
-        const masterRes = await groq.chat.completions.create({ 
-            messages: [{ role: 'system', content: masterPrompt }], 
-            model: MASTER_MODEL, 
-            temperature: 0.1, 
-            response_format: { type: 'json_object' } 
-        });
-        
-        const masterData = JSON.parse(masterRes.choices[0].message.content);
-        const techStack = masterData.tech_stack || "React";
-        const filesToGenerate = masterData.files_needed || ["src/App.jsx"];
-        const dependencies = masterData.dependencies || [];
+        let masterData;
+        try {
+            const masterRes = await groq.chat.completions.create({ messages: [{ role: 'system', content: masterPrompt }], model: MASTER_MODEL, temperature: 0.1, response_format: { type: 'json_object' } });
+            masterData = JSON.parse(masterRes.choices[0].message.content);
+        } catch (e) {
+            masterLogs.push({ agent: "System Alert", status: "Master Failed", details: "Groq Master exhausted. Falling back to Gemini Master..." });
+            const backupMaster = await safeGenerate(masterPrompt, true);
+            masterData = extractJson(backupMaster.text);
+        }
+
+        const techStack = masterData?.tech_stack || "React";
+        const filesToGenerate = masterData?.files_needed || ["src/App.jsx"];
+        const dependencies = masterData?.dependencies || [];
         
         masterLogs.push({ agent: "System Architect", status: "Stack Locked", details: `Generating ${filesToGenerate.length} files.` });
 
         // =================================================================
-        // ⚡ DEEP CODING (GEMINI 1.5 FLASH)
+        // ⚡ IMMORTAL DEEP CODING
         // =================================================================
-        const geminiModel = genAI.getGenerativeModel({ 
-            model: WORKER_MODEL,
-            generationConfig: { responseMimeType: "application/json" } 
-        });
-
         for (const filename of filesToGenerate) {
             try {
-                // 🔥 THE MAGIC CURE: 6 Second delay per file to bypass 429 Error 🔥
-                await sleep(6000); 
+                await sleep(4000); // Base throttling
 
-                masterLogs.push({ agent: `${techStack} Dev (Gemini)`, status: "Deep Coding", details: `Writing elite logic for ${filename}...` });
+                masterLogs.push({ agent: `${techStack} Dev`, status: "Deep Coding", details: `Writing elite logic for ${filename}...` });
                 
                 const workerPrompt = `You are an Elite Developer. Project Context: "${finalPrompt}".
                 🚨 CRITICAL: YOU ARE ONLY WRITING CODE FOR ${filename}. Do not write other files.
                 Return ONLY JSON: { "code": "full detailed code here" }`;
                 
-                const geminiResult = await geminiModel.generateContent(workerPrompt);
-                let currentCode = extractJson(geminiResult.response.text())?.code || geminiResult.response.text();
+                // 🔥 THE MAGIC ENGINE 🔥
+                const generatedData = await safeGenerate(workerPrompt, true);
+                let currentCode = extractJson(generatedData.text)?.code || generatedData.text;
+                
+                masterLogs.push({ agent: "Engine Router", status: "Engine Used", details: `Code generated successfully using ${generatedData.engine} engine.` });
 
                 // SAVE FILE
                 const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
@@ -124,24 +152,22 @@ app.post('/api/build', async (req, res) => {
                     masterLogs.push({ agent: "Auto-Heal Alert", status: "Execution Failed", details: `Terminal error detected.` });
                 }
 
-                // QA AUTO-FIX
+                // QA AUTO-FIX (Immortal)
                 if (executionError) {
-                    await sleep(6000); // Another delay before fix
-                    masterLogs.push({ agent: "QA Hacker (Gemini)", status: "Hunting Bugs", details: "Auto-fixing code..." });
+                    await sleep(3000);
+                    masterLogs.push({ agent: "QA Hacker", status: "Hunting Bugs", details: "Auto-fixing code..." });
                     const qaPrompt = `Fix this terminal error:\n${executionError}\n\nCode:\n${currentCode}\nReturn ONLY JSON: { "code": "fixed code" }`;
                     
-                    const qaResult = await geminiModel.generateContent(qaPrompt);
-                    currentCode = extractJson(qaResult.response.text())?.code || currentCode;
+                    const qaData = await safeGenerate(qaPrompt, true);
+                    currentCode = extractJson(qaData.text)?.code || currentCode;
                     
                     await fs.writeFile(absoluteFilePath, currentCode);
-                    masterLogs.push({ agent: "QA Hacker (Gemini)", status: "Bug Fixed", details: "Terminal error auto-healed." });
+                    masterLogs.push({ agent: "QA Hacker", status: "Bug Fixed", details: `Terminal error auto-healed via ${qaData.engine}.` });
                 }
                 masterFiles[filename] = currentCode;
 
             } catch (fileError) {
-                // Formatting error so UI doesn't break
-                const shortError = fileError.message.substring(0, 80) + '...';
-                masterLogs.push({ agent: "System Alert", status: "API Failed", details: `Gemini Error on ${filename}: ${shortError}` });
+                masterLogs.push({ agent: "System Crash", status: "API Exhausted", details: `Both AI engines failed on ${filename}. Need fresh API Keys or 24h rest.` });
             }
         }
 
@@ -160,7 +186,7 @@ app.post('/api/build', async (req, res) => {
             }
         }
 
-        masterLogs.push({ agent: "Deployment Manager", status: "Success", details: `Project built perfectly using Bulletproof Hybrid Swarm!` });
+        masterLogs.push({ agent: "Deployment Manager", status: "Success", details: `Project built perfectly using Immortal Fallback Engine!` });
         res.json({ success: true, logs: masterLogs, files: masterFiles });
 
     } catch (error) {
