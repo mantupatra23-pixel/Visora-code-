@@ -36,7 +36,7 @@ app.post('/api/build', async (req, res) => {
         // 🧠 DEPARTMENT 1: GEMINI (Planning - 10 Agents)
         // ==========================================
         console.log(`[1/3] Calling Gemini API (Planning Department)...`);
-        const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const geminiPrompt = `You are the Planning Department of Mantu AI (10 specialized agents).
         Task: "${prompt}"
         Generate exactly 10 agent logs outlining the planning phase (Requirements, Architecture, Database, API mapping, etc.).
