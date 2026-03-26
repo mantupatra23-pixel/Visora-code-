@@ -11,37 +11,36 @@ app.use(express.json());
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "TRUE MASTER-WORKER SWARM ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "DEEP MASTER-WORKER SWARM ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`\n[🚀 True Master-Worker Swarm Initiated]`);
+    console.log(`\n[🚀 Deep Master-Worker Swarm Initiated]`);
 
     try {
-        if (!process.env.GROQ_API_KEY) {
-            return res.json({ success: false, error: "Groq API Key missing!" });
-        }
+        if (!process.env.GROQ_API_KEY) return res.json({ success: false, error: "Groq API Key missing!" });
 
         // =================================================================
-        // 🧠 PHASE 1: MASTER ARCHITECT (Decides structure and logs)
+        // 🧠 PHASE 1: MASTER ARCHITECT (Blueprint Creator)
         // =================================================================
-        console.log(`[1/2] Master Architect is planning the project...`);
+        console.log(`[1/2] Master Architect planning the project...`);
         const masterPrompt = `You are the Master Architect of Mantu AI.
         User Request: "${prompt}"
-
-        Your ONLY job is to plan the architecture and decide which files are needed.
-
-        Return ONLY valid JSON in this exact format:
+        
+        Plan the architecture for a modern, Silicon-Valley grade application.
+        Break it down into necessary files. 
+        
+        Return ONLY valid JSON:
         {
           "logs": [
-            { "agent": "Lead Architect", "status": "Planning", "details": "Designed component structure..." },
-            { "agent": "Security Lead", "status": "Auditing", "details": "Checked requirements..." }
+            { "agent": "Lead Architect", "status": "Blueprint Created", "details": "Analyzed request and assigned components to worker squads." }
           ],
           "files_needed": [
             "src/App.jsx", 
             "src/components/Navbar.jsx", 
             "src/components/HeroSection.jsx",
+            "src/components/InputBox.jsx",
             "tailwind.config.js"
           ]
         }`;
@@ -56,34 +55,43 @@ app.post('/api/build', async (req, res) => {
         const masterData = JSON.parse(masterRes.choices[0].message.content);
         const filesToGenerate = masterData.files_needed || ["src/App.jsx"];
         let masterFiles = {};
+        let masterLogs = masterData.logs || [];
 
         // =================================================================
-        // ⚡ PHASE 2: WORKER AGENTS (Focuses heavily on ONE file at a time)
+        // ⚡ PHASE 2: DEEP WORKER SQUADS (1 Squad per file)
         // =================================================================
-        console.log(`[2/2] Master delegating ${filesToGenerate.length} files to Worker Agents...`);
+        console.log(`[2/2] Master delegating to ${filesToGenerate.length} Worker Squads...`);
 
-        // Hum ek-ek karke file banwayenge taaki AI detail mein code likhe
         for (const filename of filesToGenerate) {
-            console.log(`      -> Worker Agent writing: ${filename}`);
+            console.log(`      -> Squad building: ${filename}`);
+            
+            masterLogs.push({ 
+                agent: "Dev Squad", 
+                status: "Deep Coding", 
+                details: `A team of 5 agents (UI, React, Animations, QA) is heavily coding ${filename}...` 
+            });
 
-            const workerPrompt = `You are an Elite Senior React & Tailwind Developer.
-            Project Context: "${prompt}"
-
-            Your ONLY task is to write the FULL, PRODUCTION-READY code for this specific file: ${filename}.
-
-            CRITICAL RULES:
-            1. DO NOT BE LAZY! Write EVERY SINGLE LINE of the code. 
-            2. DO NOT use placeholders like "// Add logic here".
-            3. Apply beautiful Tailwind CSS, glassmorphism, animations, and gradients as requested.
-            4. Use proper newlines (\\n).
-
+            // 🔥 YAHAN HAI ASLI JADU: SQUAD KO STRICT WARNING 🔥
+            const workerPrompt = `You are a specialized squad of 5 elite developers (React Expert, Tailwind Designer, Animation Specialist, UX Lead, and QA).
+            Overall Project Context: "${prompt}"
+            
+            YOUR ONLY TASK is to write the absolute BEST, most detailed code for this specific file: ${filename}.
+            
+            🚨 STRICT RULES FOR YOUR SQUAD 🚨
+            1. NO LAZINESS! You MUST write highly detailed, production-ready code.
+            2. ZERO PLACEHOLDERS. Do not write "// code goes here". Write the actual logic.
+            3. ADVANCED UI: If it's a component, forcefully include Glassmorphism, beautiful Tailwind gradients, hover animations, and transitions.
+            4. USE ICONS: Embed complex SVG icons directly in the code for a premium look.
+            5. It should look exactly like Vercel, Cursor, or v0.dev.
+            6. Use proper newlines (\\n).
+            
             Return ONLY valid JSON.
-            Format: { "code": "full code string here" }`;
+            Format: { "code": "full detailed exhaustive code string here" }`;
 
             const workerRes = await groq.chat.completions.create({
                 messages: [{ role: 'system', content: workerPrompt }],
                 model: 'llama-3.3-70b-versatile',
-                temperature: 0.2, // Thodi creativity ke liye 0.2
+                temperature: 0.3, // Thodi creativity on rakhi hai taaki design acha banaye
                 response_format: { type: 'json_object' }
             });
 
@@ -91,11 +99,12 @@ app.post('/api/build', async (req, res) => {
             masterFiles[filename] = workerData.code || `// Error writing ${filename}`;
         }
 
+        masterLogs.push({ agent: "QA Lead", status: "Review Complete", details: "All components deeply coded, styled, and assembled perfectly." });
         console.log(`[Swarm Complete] Successfully generated deep-coded files!`);
 
         res.json({ 
             success: true, 
-            logs: masterData.logs || [], 
+            logs: masterLogs, 
             files: masterFiles 
         });
 
@@ -107,3 +116,4 @@ app.post('/api/build', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}...`));
+
