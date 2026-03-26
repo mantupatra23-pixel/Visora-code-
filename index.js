@@ -22,63 +22,56 @@ app.get('/api/env', (req, res) => {
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`\n[🚀 Mantu AI Started]: ${prompt.substring(0, 30)}...`);
+    console.log(`\n[🚀 Mantu AI Swarm Initiated]: ${prompt.substring(0, 30)}...`);
 
     try {
         if (!process.env.GROQ_API_KEY) return res.json({ success: false, error: "API Key missing!" });
 
-        // ==========================================
-        // 🧠 AGENT 1: THE ARCHITECT (Analysis)
-        // ==========================================
-        console.log(`[Agent 1] Analyzing and planning files...`);
-        const agent1Prompt = `You are Mantu AI Architect. Analyze this app idea: "${prompt}".
-        Decide which React component files need to be created (e.g., App.jsx, Navbar.jsx, Dashboard.jsx).
-        Return ONLY a JSON object exactly in this format:
+        // 🔥 THE 5-AGENT SWARM PROMPT 🔥
+        const systemPrompt = `You are the Mantu AI Swarm, an elite team of 5 software engineering agents working together to build a React application.
+        The user's request is: "${prompt}"
+
+        You must simulate the thought process of 5 different agents and then output the final code.
+        
+        AGENT ROLES:
+        1. Requirements Analyst: Breaks down the core features.
+        2. System Architect: Decides the file structure and component breakdown.
+        3. UI/UX Designer: Decides on the Tailwind CSS theme, colors, and layout.
+        4. State Manager: Plans React hooks (useState, useEffect) and data flow.
+        5. Senior Developer: Writes the final flawless code file-by-file.
+
+        CRITICAL: Return ONLY a valid JSON object. Do not wrap in markdown (no \`\`\`json).
+        
+        JSON STRUCTURE REQUIRED:
         {
-          "analysis": "Brief 2-sentence explanation of the architecture",
-          "files_to_create": ["src/App.jsx", "src/components/Header.jsx"]
+          "agent_logs": [
+            { "agent": "Requirements Analyst", "status": "Analyzed request...", "details": "Detailed 2-3 sentence explanation of features." },
+            { "agent": "System Architect", "status": "Designed Architecture...", "details": "Detailed explanation of files created." },
+            { "agent": "UI/UX Designer", "status": "Finalized Design System...", "details": "Explanation of Tailwind classes and colors used." },
+            { "agent": "State Manager", "status": "Planned Data Flow...", "details": "Explanation of hooks used." },
+            { "agent": "Senior Developer", "status": "Code Generation Complete", "details": "Successfully generated all files." }
+          ],
+          "files": {
+            "src/App.jsx": "import React from 'react';\\n// FULL CODE HERE",
+            "src/components/AnyOtherFile.jsx": "// FULL CODE HERE"
+          }
         }`;
 
-        const completion1 = await groq.chat.completions.create({
-            messages: [{ role: 'system', content: agent1Prompt }],
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: 'system', content: systemPrompt }],
             model: 'llama-3.3-70b-versatile',
             temperature: 0.1,
-            response_format: { type: 'json_object' } // FORCES OUTPUT TO BE JSON
+            response_format: { type: 'json_object' }
         });
 
-        const planJSON = JSON.parse(completion1.choices[0].message.content);
-        console.log(`[Agent 1] Plan Ready:`, planJSON.files_to_create);
+        // Parse the massive JSON from our 5 agents
+        const resultJSON = JSON.parse(completion.choices[0].message.content);
+        console.log(`[Swarm Complete] Generated ${Object.keys(resultJSON.files || {}).length} files.`);
 
-        // ==========================================
-        // 💻 AGENT 2: THE CODER (File-by-File Gen)
-        // ==========================================
-        console.log(`[Agent 2] Writing code for ${planJSON.files_to_create.length} files...`);
-        const agent2Prompt = `You are Mantu AI Coder. Based on the app idea: "${prompt}".
-        Write the FULL, flawless React code for the following files: ${JSON.stringify(planJSON.files_to_create)}.
-        Use Tailwind CSS for styling.
-        Return ONLY a JSON object where keys are file paths and values are the raw code strings.
-        DO NOT USE MARKDOWN IN THE CODE STRINGS. USE PROPER NEWLINES (\\n).
-        Format:
-        {
-          "src/App.jsx": "import React from 'react';\\n\\nexport default function App() {\\n  return <div>...</div>;\\n}",
-          "src/components/Header.jsx": "..."
-        }`;
-
-        const completion2 = await groq.chat.completions.create({
-            messages: [{ role: 'system', content: agent2Prompt }],
-            model: 'llama-3.3-70b-versatile',
-            temperature: 0.1,
-            response_format: { type: 'json_object' } // FORCES OUTPUT TO BE JSON
-        });
-
-        const codeJSON = JSON.parse(completion2.choices[0].message.content);
-        console.log(`[Agent 2] Code generation complete!`);
-
-        // Send both Analysis and Files to Frontend
         res.json({ 
             success: true, 
-            analysis: planJSON.analysis,
-            files: codeJSON 
+            logs: resultJSON.agent_logs,
+            files: resultJSON.files 
         });
 
     } catch (error) {
@@ -87,5 +80,5 @@ app.post('/api/build', async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send("Mantu Multi-Agent Backend Live! 🚀"));
+app.get('/', (req, res) => res.send("Mantu 5-Agent Swarm Backend Live! 🚀"));
 app.listen(process.env.PORT || 3000, () => console.log("Server running..."));
