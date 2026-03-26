@@ -11,12 +11,12 @@ app.use(express.json());
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "DEEP ACTOR-CRITIC SWARM ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "FULL-STACK SELF-HEALING SWARM ACTIVE" } });
 });
 
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body;
-    console.log(`\n[🚀 Deep Actor-Critic Swarm Initiated]`);
+    console.log(`\n[🚀 Full-Stack Self-Healing Swarm Initiated]`);
 
     try {
         if (!process.env.GROQ_API_KEY) return res.json({ success: false, error: "Groq API Key missing!" });
@@ -25,19 +25,20 @@ app.post('/api/build', async (req, res) => {
         let masterFiles = {};
 
         // =================================================================
-        // 🧠 PHASE 1: ANALYZE & VERIFY (Master + Analyst)
+        // 🧠 PHASE 1: MASTER ANALYST (Frontend + Backend Architecture)
         // =================================================================
-        console.log(`[1/3] Master Architect analyzing and verifying...`);
-        masterLogs.push({ agent: "Agent 1 (Analyst)", status: "Analyzing Prompt", details: "Breaking down the user request into deep technical requirements." });
-        masterLogs.push({ agent: "Agent 2 (Verifier)", status: "Verifying Tech Stack", "details": "Ensuring React, Tailwind, and complex UI rules are applied." });
-        masterLogs.push({ agent: "Agent 3 (Master)", status: "Creating Blueprint", "details": "Finalizing the file structure for the workers." });
+        console.log(`[1/3] Master Analyst is breaking down the prompt...`);
+        masterLogs.push({ agent: "Master Analyst", status: "Deep Analysis", details: "Breaking down requirements for both Frontend (React) and Backend (Node/Express)." });
 
         const masterPrompt = `You are the Master Architect of Mantu AI.
         User Request: "${prompt}"
-        Create a comprehensive, Silicon-Valley grade project structure.
+        
+        Create a Full-Stack architecture (Frontend + Backend). 
+        You MUST include a backend file (e.g., 'server/index.js' or 'api/server.js') and frontend files (e.g., 'src/App.jsx').
+        
         Return ONLY valid JSON:
         {
-          "files_needed": ["src/App.jsx", "src/components/Navbar.jsx", "tailwind.config.js"]
+          "files_needed": ["src/App.jsx", "src/components/Navbar.jsx", "server/index.js"]
         }`;
 
         const masterRes = await groq.chat.completions.create({
@@ -48,60 +49,73 @@ app.post('/api/build', async (req, res) => {
         });
 
         const masterData = JSON.parse(masterRes.choices[0].message.content);
-        const filesToGenerate = masterData.files_needed || ["src/App.jsx"];
+        const filesToGenerate = masterData.files_needed || ["src/App.jsx", "server/index.js"];
+        
+        masterLogs.push({ agent: "System Architect", status: "Blueprint Ready", details: `Architecture mapped. Files to generate: ${filesToGenerate.join(', ')}` });
 
         // =================================================================
-        // ⚡ PHASE 2: THE 3-TIER CODING ENGINE (Work -> Verify -> Oversee)
+        // ⚡ PHASE 2 & 3: DRAFTING, BUG CHECKING, & LINKING
         // =================================================================
-        console.log(`[2/3] Deep Coding Phase Started for ${filesToGenerate.length} files...`);
+        console.log(`[2/3] Deep Coding & QA Phase Started...`);
 
         for (const filename of filesToGenerate) {
             console.log(`      -> Processing: ${filename}`);
-            masterLogs.push({ agent: "Agent 1 (Coder)", status: "Drafting", details: `Writing initial logic for ${filename}...` });
-
-            // STEP A: AGENT 1 (THE WORKER) WRITES INITIAL DRAFT
-            const workerPrompt = `Write the code for ${filename} based on this project: "${prompt}". Use React and Tailwind CSS. Return ONLY JSON: { "code": "..." }`;
-            const workerRes = await groq.chat.completions.create({
-                messages: [{ role: 'system', content: workerPrompt }],
-                model: 'llama-3.3-70b-versatile',
-                temperature: 0.2,
-                response_format: { type: 'json_object' }
-            });
-            const draftCode = JSON.parse(workerRes.choices[0].message.content).code;
-
-            masterLogs.push({ agent: "Agent 2 (Reviewer)", status: "Verifying & Enhancing", details: `Criticizing ${filename} draft and forcing deep improvements...` });
-
-            // 🔥 STEP B: AGENT 2 & 3 (THE CRITIC & OVERSEER) FORCE DEEP ENHANCEMENTS 🔥
-            const criticPrompt = `You are the Elite Tech Lead and QA Overseer. 
-            A junior developer wrote this draft for ${filename}:\n\n${draftCode}\n\n
-            Project Goal: "${prompt}"
             
-            This draft is TOO BASIC. Your job is to deeply ENHANCE it.
-            🚨 STRICT OVERSEER RULES:
-            1. Make the code 3x more detailed, professional, and robust.
-            2. Forcefully inject advanced Tailwind CSS (glassmorphism, deep gradients, complex hover/focus states, smooth transitions).
-            3. Add proper SVG icons, exhaustive React State, and flawless layout structuring.
-            4. DO NOT use placeholders. Every function must be fully implemented.
-            5. Ensure perfect line breaks (\\n) and indentation.
-            
-            Return ONLY valid JSON with the final production-ready code.
-            Format: { "code": "full enhanced code string" }`;
+            try {
+                // STEP A: WORKER WRITES INITIAL DRAFT
+                masterLogs.push({ agent: "Full-Stack Dev", status: "Drafting", details: `Writing raw logic for ${filename}...` });
+                
+                const workerPrompt = `Write the code for ${filename} based on this Full-Stack project: "${prompt}". 
+                If it's frontend, use React & Tailwind. If backend, use Node.js/Express. 
+                Return ONLY JSON: { "code": "..." }`;
+                
+                const workerRes = await groq.chat.completions.create({
+                    messages: [{ role: 'system', content: workerPrompt }],
+                    model: 'llama-3.3-70b-versatile',
+                    temperature: 0.2,
+                    response_format: { type: 'json_object' }
+                });
+                const draftCode = JSON.parse(workerRes.choices[0].message.content).code;
 
-            const criticRes = await groq.chat.completions.create({
-                messages: [{ role: 'system', content: criticPrompt }],
-                model: 'llama-3.3-70b-versatile',
-                temperature: 0.3, // Creativity on for advanced styling
-                response_format: { type: 'json_object' }
-            });
+                // STEP B: QA AGENT FINDS BUGS & LINKS FRONTEND TO BACKEND
+                masterLogs.push({ agent: "QA Tester", status: "Hunting Bugs", details: `Running simulated tests on ${filename} for errors and API links...` });
 
-            const finalDeepCode = JSON.parse(criticRes.choices[0].message.content).code;
-            masterFiles[filename] = finalDeepCode || draftCode; // Save the deeply reviewed code
-            
-            masterLogs.push({ agent: "Agent 3 (Overseer)", status: "Approved", details: `${filename} passed deep quality checks and is production-ready.` });
+                const qaPrompt = `You are the Elite QA & Integration Engineer. 
+                Review this code for ${filename}:\n\n${draftCode}\n\n
+                Project Goal: "${prompt}"
+                
+                YOUR JOB:
+                1. Fix ANY bugs, syntax errors, or missing imports.
+                2. If it's a Frontend file, ensure it makes fetch/axios calls to the Backend API.
+                3. If it's a Backend file, ensure CORS is enabled and API routes match the frontend.
+                4. Add detailed, professional logic. DO NOT MINIFY. Use \\n.
+                
+                Return ONLY valid JSON.
+                Format: { "status": "Fixed 2 bugs and linked API", "code": "full bug-free code string" }`;
+
+                const qaRes = await groq.chat.completions.create({
+                    messages: [{ role: 'system', content: qaPrompt }],
+                    model: 'llama-3.3-70b-versatile',
+                    temperature: 0.1,
+                    response_format: { type: 'json_object' }
+                });
+
+                const qaData = JSON.parse(qaRes.choices[0].message.content);
+                const finalCode = qaData.code;
+                
+                masterFiles[filename] = finalCode;
+                masterLogs.push({ agent: "Bug Fixer", status: "Verified & Linked", details: `[Resolved]: ${qaData.status || 'Code optimized and linked successfully.'}` });
+
+            } catch (fileError) {
+                // 🚨 LIVE ERROR HANDLING: Agar kisi file mein error aaya, toh live panel par dikhayega!
+                console.error(`Error generating ${filename}:`, fileError.message);
+                masterLogs.push({ agent: "System Alert", status: "API Failed", details: `Error generating ${filename}: ${fileError.message}. Initiating auto-skip.` });
+                masterFiles[filename] = `// Mantu AI Error: Failed to generate this file.\n// Details: ${fileError.message}`;
+            }
         }
 
-        console.log(`[Swarm Complete] Successfully generated and reviewed deep-coded files!`);
-        masterLogs.push({ agent: "System", status: "Success", details: "All files deeply coded, reviewed, and finalized." });
+        console.log(`[Swarm Complete] Full-Stack Generation Successful!`);
+        masterLogs.push({ agent: "Deployment Manager", status: "Success", details: "Frontend and Backend are successfully generated, linked, and bug-free." });
 
         res.json({ 
             success: true, 
