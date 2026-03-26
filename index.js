@@ -28,23 +28,20 @@ app.post('/api/build', async (req, res) => {
         if (process.env.GEMINI_API_KEY) {
             console.log(`[1/3] Calling Gemini API...`);
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            // 🔥 FIXED: Using the most universally supported model string 🔥
-            const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }); 
-            
-            const geminiPrompt = `You are the Planning Department of Mantu AI. Task: "${prompt}". Generate exactly 10 agent logs outlining the planning phase. Return ONLY a JSON object with a "logs" array. No markdown. Format: { "logs": [ { "agent": "Product Manager", "status": "Defining Scope", "details": "..." } ] }`;
-            
-            const geminiResult = await geminiModel.generateContent({
-                contents: [{ role: 'user', parts: [{ text: geminiPrompt }] }],
-                generationConfig: { responseMimeType: "application/json" }
-            });
-            const geminiData = JSON.parse(geminiResult.response.text());
+            // Safe stable model string that never 404s
+            const geminiModel = genAI.getGenerativeModel({ model: "gemini-pro" }); 
+
+            const geminiPrompt = `You are the Planning Department of Mantu AI. Task: "${prompt}". Generate exactly 5 agent logs outlining the planning phase (Architecture, Features). Return ONLY a JSON object with a "logs" array. Format: { "logs": [ { "agent": "Product Manager", "status": "Defining Scope", "details": "..." } ] }`;
+
+            const geminiResult = await geminiModel.generateContent(geminiPrompt);
+            let cleanText = geminiResult.response.text().replace(/```(json)?/gi, '').replace(/```/g, '').trim();
+            const geminiData = JSON.parse(cleanText);
             masterAgentLogs = [...masterAgentLogs, ...(geminiData.logs || [])];
         } else {
-            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Gemini API Key missing." });
+            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Gemini Key missing." });
         }
     } catch (error) {
         console.error("Gemini Error:", error.message);
-        // Anti-Crash: Log the error to frontend but DON'T stop the app!
         masterAgentLogs.push({ agent: "Gemini System", status: "API Failed", details: error.message });
     }
 
@@ -55,7 +52,16 @@ app.post('/api/build', async (req, res) => {
         if (process.env.GROQ_API_KEY) {
             console.log(`[2/3] Calling Groq API...`);
             const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-            const groqPrompt = `You are the Frontend Department of Mantu AI. Task: "${prompt}". Generate exactly 10 agent logs for frontend work, and the FULL React code for the frontend files. Return ONLY a valid JSON. NO markdown. Format: { "logs": [ { "agent": "UI Designer", "status": "Styling", "details": "..." } ], "files": { "src/App.jsx": "import React...", "src/components/Navbar.jsx": "..." } }`;
+
+            const groqPrompt = `You are the Frontend Department of Mantu AI. Task: "${prompt}". 
+            Generate exactly 5 agent logs for frontend work, and the FULL React code files.
+
+            CRITICAL CODING RULES:
+            1. DO NOT MINIFY THE CODE! 
+            2. You MUST use actual newline characters ('\\n') and proper indentation in the code strings.
+            3. Return ONLY valid JSON. No markdown tags.
+
+            Format: { "logs": [ { "agent": "UI Designer", "status": "Styling", "details": "..." } ], "files": { "src/App.jsx": "import React from 'react';\\n\\nexport default function App() {\\n  return <div>Hello</div>;\\n}" } }`;
 
             const groqResult = await groq.chat.completions.create({
                 messages: [{ role: 'system', content: groqPrompt }],
@@ -67,7 +73,7 @@ app.post('/api/build', async (req, res) => {
             masterAgentLogs = [...masterAgentLogs, ...(groqData.logs || [])];
             masterFiles = { ...masterFiles, ...(groqData.files || {}) };
         } else {
-            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Groq API Key missing." });
+            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Groq Key missing." });
         }
     } catch (error) {
         console.error("Groq Error:", error.message);
@@ -81,7 +87,7 @@ app.post('/api/build', async (req, res) => {
         if (process.env.MISTRAL_API_KEY) {
             console.log(`[3/3] Calling Mistral API...`);
             const mistral = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
-            const mistralPrompt = `You are the Backend & QA Department of Mantu AI. Task: "${prompt}". Generate exactly 5 agent logs for Backend setup and Config. Generate the config files. Return ONLY a valid JSON. NO markdown. Format: { "logs": [ { "agent": "Security Lead", "status": "Testing", "details": "..." } ], "files": { "tailwind.config.js": "..." } }`;
+            const mistralPrompt = `You are the Backend & QA Department of Mantu AI. Task: "${prompt}". Generate exactly 2 logs for Setup and Security. Generate config files with PROPER NEWLINES (\\n), DO NOT MINIFY. Return ONLY valid JSON. Format: { "logs": [ { "agent": "Security Lead", "status": "Testing", "details": "..." } ], "files": { "tailwind.config.js": "..." } }`;
 
             const mistralResult = await mistral.chat.complete({
                 model: 'mistral-large-latest',
@@ -93,7 +99,7 @@ app.post('/api/build', async (req, res) => {
             masterAgentLogs = [...masterAgentLogs, ...(mistralData.logs || [])];
             masterFiles = { ...masterFiles, ...(mistralData.files || {}) };
         } else {
-            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Mistral API Key missing." });
+            masterAgentLogs.push({ agent: "System", status: "Warning", details: "Mistral Key missing." });
         }
     } catch (error) {
         console.error("Mistral Error:", error.message);
@@ -104,12 +110,11 @@ app.post('/api/build', async (req, res) => {
     // 🎯 FINAL ASSEMBLY & SAFETY CHECK
     // ==========================================
     console.log(`[Swarm Complete] Agents Deployed: ${masterAgentLogs.length}. Files: ${Object.keys(masterFiles).length}`);
-    
-    // Agar teeno API fail ho gayi tabhi error denge, warna jo pass hui uska data bhejenge
+
     if (Object.keys(masterFiles).length === 0) {
         return res.json({ 
             success: false, 
-            error: "All AI APIs failed. Check the Agent Logs for details.",
+            error: "All APIs failed. Please check your API Keys in Render Dashboard.",
             logs: masterAgentLogs,
             files: { "SystemLog.txt": "// All API calls failed. No files generated." }
         });
