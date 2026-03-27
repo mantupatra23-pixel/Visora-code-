@@ -9,15 +9,15 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Image upload ke liye 50mb limit
+app.use(express.json({ limit: '50mb' })); // Vision Image ke liye badi limit
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null; 
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
 
 const WORKSPACE_DIR = './mantu_workspace';
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Models
 const MASTER_MODEL = 'llama-3.3-70b-versatile'; 
 const GEMINI_WORKER = 'gemini-1.5-flash'; 
 
@@ -31,15 +31,19 @@ const extractJson = (text) => {
 
 const cleanRawCode = (text) => text.replace(/```[a-zA-Z]*\n/gi, '').replace(/```/gi, '').trim();
 
-// 🔥 THE 5-TIER ENGINE 🔥
+// 🔥 THE GPU-FIRST ENGINE 🔥
 async function safeGenerate(promptText, isJson = true, sendEvent = null) {
-    // 🥇 Tier 1: AWS Llama-3 (30s Timeout)
+    
+    // 🥇 Tier 1: AAPKA APNA AWS GPU SERVER (Nvidia A10G)
     try {
-        const awsApiUrl = process.env.AWS_API_URL || "http://54.224.241.169:8000/chat";
+        const awsApiUrl = process.env.AWS_API_URL || "http://34.229.98.123:8000/chat";
         const finalUrl = `${awsApiUrl}?prompt=${encodeURIComponent(promptText + (isJson ? " MUST RETURN JSON." : " RAW CODE ONLY."))}`;
         
+        if(sendEvent) sendEvent('log', { agent: "AWS GPU Engine", status: "Computing", details: "Llama-3 processing on Nvidia A10G..." });
+
+        // ⏱️ Timeout 120 Seconds kar diya taaki bada code kate nahi
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); 
+        const timeoutId = setTimeout(() => controller.abort(), 120000); 
 
         const awsRes = await fetch(finalUrl, {
             method: "POST",
@@ -48,39 +52,46 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null) {
         });
         clearTimeout(timeoutId); 
 
-        if (!awsRes.ok) throw new Error("AWS HTTP Error");
+        if (!awsRes.ok) throw new Error("AWS Server Unreachable");
         const awsData = await awsRes.json();
-        return { text: awsData.response, engine: "AWS Custom Llama-3" };
+        
+        if(awsData.error) throw new Error(awsData.error);
+        return { text: awsData.response, engine: "AWS Llama-3 GPU" };
+        
     } catch (awsErr) {
-        // 🥈 Tier 2: Gemini
+        if(sendEvent) sendEvent('log', { agent: "System Router", status: "Switching", details: `AWS Failed/Busy. Switching to Groq...` });
+
+        // 🥈 Tier 2: Groq Backup
         try {
-            if (!genAI) throw new Error("Gemini Key Missing");
-            const geminiModel = genAI.getGenerativeModel({ model: GEMINI_WORKER, generationConfig: isJson ? { responseMimeType: "application/json" } : {} });
-            const res = await geminiModel.generateContent(promptText);
-            return { text: res.response.text(), engine: "Gemini" };
-        } catch (geminiErr) {
-            // 🥉 Tier 3: Groq
+            await sleep(1000); 
+            const groqRes = await groq.chat.completions.create({ 
+                messages: [
+                    { role: 'system', content: isJson ? "Output valid JSON only." : "Output ONLY raw code. No markdown." },
+                    { role: 'user', content: promptText }
+                ], 
+                model: MASTER_MODEL, temperature: 0.2, response_format: isJson ? { type: 'json_object' } : null
+            });
+            return { text: groqRes.choices[0].message.content, engine: "Groq" };
+        } catch (groqErr) {
+            
+            if(sendEvent) sendEvent('log', { agent: "System Router", status: "Switching", details: `Groq Down. Moving to Gemini...` });
+
+            // 🥉 Tier 3: Gemini Backup
             try {
-                await sleep(1000); 
-                const groqRes = await groq.chat.completions.create({ 
-                    messages: [
-                        { role: 'system', content: isJson ? "Output valid JSON only." : "Output ONLY raw code. No markdown." },
-                        { role: 'user', content: promptText }
-                    ], 
-                    model: MASTER_MODEL, temperature: 0.2, response_format: isJson ? { type: 'json_object' } : null
-                });
-                return { text: groqRes.choices[0].message.content, engine: "Groq" };
-            } catch (groqErr) {
+                if (!genAI) throw new Error("Gemini Key Missing");
+                const geminiModel = genAI.getGenerativeModel({ model: GEMINI_WORKER, generationConfig: isJson ? { responseMimeType: "application/json" } : {} });
+                const res = await geminiModel.generateContent(promptText);
+                return { text: res.response.text(), engine: "Gemini" };
+            } catch (geminiErr) {
                 throw new Error("ALL ENGINES FAILED"); 
             }
         }
     }
 }
 
-app.get('/api/env', (req, res) => res.json({ success: true, variables: { MANTU_AI_STATUS: "VISION + MEMORY ENGINE ACTIVE" } }));
+app.get('/api/env', (req, res) => res.json({ success: true, variables: { MANTU_AI_STATUS: "GPU VISION + MEMORY ENGINE ACTIVE" } }));
 
 app.post('/api/build', async (req, res) => {
-    // 🔥 Naya Data: image (Base64) aur contextFiles (Memory) 🔥
     const { prompt, image, contextFiles } = req.body; 
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
@@ -92,9 +103,9 @@ app.post('/api/build', async (req, res) => {
 
         sendEvent('log', { agent: "Omni-Master", status: "Planning Blueprint", details: "Analyzing request..." });
 
-        // 👁️ VISION ENGINE LOGIC: Agar screenshot hai, toh seedha Gemini se plan banwao
+        // 👁️ VISION ENGINE (Screenshot to Code)
         if (image && genAI) {
-            sendEvent('log', { agent: "Vision Engine", status: "Scanning Image", details: "Extracting UI components from screenshot..." });
+            sendEvent('log', { agent: "Vision Engine", status: "Scanning Image", details: "Extracting UI layout from screenshot..." });
             const geminiVisionModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
             
             const imagePart = { inlineData: { data: image.split(',')[1], mimeType: image.split(';')[0].split(':')[1] } };
@@ -103,8 +114,8 @@ app.post('/api/build', async (req, res) => {
             const visionRes = await geminiVisionModel.generateContent([visionPrompt, imagePart]);
             masterData = extractJson(visionRes.response.text());
         } else {
-            // Normal Prompt Logic
-            const masterPrompt = `You are the Omni-Language Master. Request: "${finalPrompt}". Return ONLY JSON: { "tech_stack": "...", "files_needed": ["src/App.jsx"], "dependencies": ["axios"] }`;
+            // NORMAL MASTER PLANNER
+            const masterPrompt = `You are the Omni-Language Master. Request: "${finalPrompt}". Return ONLY JSON: { "tech_stack": "...", "files_needed": ["index.html"], "dependencies": [] }`;
             try {
                 const masterRes = await groq.chat.completions.create({ messages: [{ role: 'system', content: masterPrompt }], model: MASTER_MODEL, temperature: 0.1, response_format: { type: 'json_object' } });
                 masterData = JSON.parse(masterRes.choices[0].message.content);
@@ -114,16 +125,15 @@ app.post('/api/build', async (req, res) => {
             }
         }
 
-        const techStack = masterData?.tech_stack || "React";
-        const filesToGenerate = masterData?.files_needed || ["src/App.jsx"];
+        const techStack = masterData?.tech_stack || "HTML/CSS/JS";
+        const filesToGenerate = masterData?.files_needed || ["index.html"];
         sendEvent('log', { agent: "System Architect", status: "Stack Locked", details: `Generating ${filesToGenerate.length} files.` });
 
-        // 🧠 PROJECT MEMORY: Purane files ka data stringify karke memory me daalo
+        // 🧠 PROJECT MEMORY (Purana code naye code se link karna)
         let memoryString = "";
         if (contextFiles && Object.keys(contextFiles).length > 0) {
             memoryString = "\n\n[PROJECT MEMORY - EXISTING FILES:\n";
             for (const [fname, fcode] of Object.entries(contextFiles)) {
-                // Memory bachane ke liye code ko thoda chota karke bhejenge
                 memoryString += `--- ${fname} ---\n${fcode.substring(0, 1500)}...\n`; 
             }
             memoryString += "]\nCRITICAL: Ensure your new code connects flawlessly with these existing files!";
@@ -133,14 +143,12 @@ app.post('/api/build', async (req, res) => {
             try {
                 sendEvent('log', { agent: `${techStack} Dev`, status: "Deep Coding", details: `Writing logic for ${filename}...` });
                 
-                // Worker ko Prompt ke sath Memory bhi bheji jayegi
                 const workerPrompt = `You are an Elite Developer. Context: "${finalPrompt}". ${memoryString}
                 🚨 CRITICAL: YOU ARE ONLY WRITING CODE FOR ${filename}. Return ONLY the raw functional code. NO MARKDOWN.`;
                 
                 const generatedData = await safeGenerate(workerPrompt, false, sendEvent); 
                 let currentCode = cleanRawCode(generatedData.text);
                 
-                // File generate hone ke baad purane workspace me save hogi
                 const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
                 await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true });
                 await fs.writeFile(absoluteFilePath, currentCode);
