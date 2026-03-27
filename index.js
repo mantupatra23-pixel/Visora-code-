@@ -26,15 +26,18 @@ const extractJson = (text) => {
     } catch (e) { return null; }
 };
 
+// 🔥 SUPER CLEANER: Code ke aas paas ka kachra hatane ke liye
 const cleanRawCode = (text) => {
     if (!text) return "// Error: AI returned empty response";
-    let clean = text;
-    const firstTick = clean.indexOf("```");
-    if (firstTick !== -1) {
-        const lastTick = clean.lastIndexOf("```");
-        clean = (lastTick > firstTick) ? clean.substring(firstTick, lastTick + 3) : clean.substring(firstTick);
+    
+    // Sirf markdown block ke andar ka code nikalne ki koshish
+    const match = text.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+    if (match && match[1]) {
+        return match[1].trim();
     }
-    clean = clean.replace(/```[a-zA-Z]*\n?/gi, '').replace(/```/gi, '');
+    
+    // Fallback
+    let clean = text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '');
     clean = clean.replace(/^(Here is|Sure|This is|Below is|The code).*?[\r\n]/gi, '');
     clean = clean.replace(/^["'\*]*[a-zA-Z0-9_\-\.\/]+["'\*]*\s*[\r\n]/gm, '');
     return clean.trim();
@@ -50,7 +53,6 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null, customC
         if(sendEvent) sendEvent('log', { agent: "AWS GPU", status: "Computing", details: `Trying ${awsUrl}...` });
 
         const controller = new AbortController();
-        // 🔥 FIX: Timeout reduced to 30 seconds to prevent eternal spinning!
         const timeoutId = setTimeout(() => controller.abort(), 30000); 
         
         const awsRes = await fetch(finalUrl, {
@@ -104,10 +106,12 @@ app.post('/api/build', async (req, res) => {
         let masterData;
         sendEvent('log', { agent: "Omni-Master", status: "Planning Blueprint", details: "Architecting schema..." });
 
-        // 🔥 FIX: Added requirements.txt and .env explicitly to instructions
+        // 🔥 STRICT RULE FOR .ENV AND REQUIREMENTS 🔥
         const masterPrompt = `You are an Elite Architect. Request: "${finalPrompt}". 
-        If requested Python/FastAPI/Backend, you MUST include "requirements.txt", ".env" (with dummy keys), and "docker-compose.yml".
-        Return ONLY JSON: { "tech_stack": "...", "files_needed": ["index.html"], "dependencies": [] }`;
+        CRITICAL INSTRUCTION: You MUST ALWAYS include a ".env" file with the required environment variables (keep values empty or use placeholders).
+        If building a Node/React app, you MUST include a "package.json".
+        If building a Python app, you MUST include a "requirements.txt".
+        Return ONLY JSON: { "tech_stack": "...", "files_needed": ["index.html", ".env"], "dependencies": [] }`;
         
         try {
             const groq = new Groq({ apiKey: customSettings?.groqKey || process.env.GROQ_API_KEY });
