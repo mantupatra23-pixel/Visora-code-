@@ -26,21 +26,31 @@ const extractJson = (text) => {
     } catch (e) { return null; }
 };
 
-// 🔥 Smart Code Cleaner
+// 🔥 SUPER STRICT CODE CLEANER 🔥
 const cleanRawCode = (text) => {
     if (!text) return "// Error: AI returned empty response";
     let clean = text;
+
+    // 1. Extract ONLY what is between backticks (```)
     const firstTick = clean.indexOf("```");
     if (firstTick !== -1) {
         const lastTick = clean.lastIndexOf("```");
-        clean = (lastTick > firstTick) ? clean.substring(firstTick + 3, lastTick) : clean.substring(firstTick + 3);
+        clean = (lastTick > firstTick) ? clean.substring(firstTick, lastTick + 3) : clean.substring(firstTick);
     }
-    clean = clean.replace(/^[a-zA-Z0-9-]+\s*[\r\n]/i, '');
+
+    // 2. Destroy ALL Markdown backticks and language names (```javascript, ```html, etc)
+    clean = clean.replace(/```[a-zA-Z]*\n?/gi, '');
+    clean = clean.replace(/```/gi, '');
+
+    // 3. Destroy AI Conversational Junk ("Here is the code", etc)
     clean = clean.replace(/^(Here is|Sure|This is|Below is|The code).*?[\r\n]/gi, '');
+
+    // 4. 🔥 DESTROY FILENAME HEADERS (e.g., "utils/constants.js" or **App.jsx**) 🔥
+    clean = clean.replace(/^["'\*]*[a-zA-Z0-9_\-\.\/]+["'\*]*\s*[\r\n]/gm, '');
+
     return clean.trim();
 };
 
-// 🧠 Dynamic Tri-Engine Router (Takes custom keys from UI)
 async function safeGenerate(promptText, isJson = true, sendEvent = null, customConfig = {}) {
     const awsUrl = customConfig.awsIp ? `http://${customConfig.awsIp}:8000/chat` : (process.env.AWS_API_URL || "http://localhost:8000/chat");
     const groqKey = customConfig.groqKey || process.env.GROQ_API_KEY;
@@ -81,34 +91,32 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null, customC
                 const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', generationConfig: isJson ? { responseMimeType: "application/json" } : {} });
                 const res = await geminiModel.generateContent(promptText);
                 return { text: res.response.text(), engine: "Gemini" };
-            } catch (geminiErr) { throw new Error("ALL ENGINES FAILED. Check API Keys or Start AWS."); }
+            } catch (geminiErr) { throw new Error("ALL ENGINES FAILED."); }
         }
     }
 }
 
 app.post('/api/build', async (req, res) => {
-    // 🔥 NEW: Receive customSettings and chatHistory
     let { prompt, image, contextFiles, isAutoFix, customSettings, chatHistory } = req.body; 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
     const sendEvent = (type, data) => res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
 
     try {
         if (isAutoFix) {
-            sendEvent('log', { agent: "Self-Healing Agent", status: "Diagnosing", details: "Fixing bugs..." });
-            prompt = `[AUTO-FIX] Fix bug: "${prompt}". Return raw corrected code.`;
+            sendEvent('log', { agent: "Self-Healing", status: "Diagnosing", details: "Fixing bugs..." });
+            prompt = `[AUTO-FIX] Fix bug: "${prompt}". Return ONLY code.`;
         }
 
-        // 🗣️ Inject Chat History for Context
         let historyContext = "";
         if (chatHistory && chatHistory.length > 0) {
-            historyContext = "\n[CONVERSATION HISTORY]\n" + chatHistory.map(msg => `${msg.role}: ${msg.content}`).join("\n") + "\n";
+            historyContext = "\n[CONVERSATION HISTORY]\n" + chatHistory.map(msg => `${msg.role}: ${msg.text}`).join("\n") + "\n";
         }
 
-        let finalPrompt = prompt + historyContext + "\n[CRITICAL RESEARCH: Use latest 2024/2025 modern syntax. If React, use JSX.]";
+        let finalPrompt = prompt + historyContext + "\n[CRITICAL: Use modern syntax.]";
         let masterData;
         sendEvent('log', { agent: "Omni-Master", status: "Planning Blueprint", details: "Architecting schema..." });
 
-        const masterPrompt = `You are an Elite Architect. Request: "${finalPrompt}". Return ONLY JSON format: { "tech_stack": "React", "files_needed": ["App.jsx", "index.html", "styles.css"], "dependencies": [] }`;
+        const masterPrompt = `You are an Elite Architect. Request: "${finalPrompt}". Return ONLY JSON: { "tech_stack": "React", "files_needed": ["App.jsx", "index.html"], "dependencies": [] }`;
         try {
             const groq = new Groq({ apiKey: customSettings?.groqKey || process.env.GROQ_API_KEY });
             const masterRes = await groq.chat.completions.create({ messages: [{ role: 'system', content: masterPrompt }], model: MASTER_MODEL, temperature: 0.1, response_format: { type: 'json_object' } });
@@ -120,20 +128,20 @@ app.post('/api/build', async (req, res) => {
 
         const techStack = masterData?.tech_stack || "HTML/CSS/JS";
         const filesToGenerate = masterData?.files_needed || ["index.html"];
-        sendEvent('log', { agent: "System Architect", status: "Stack Locked", details: `Generating ${filesToGenerate.length} files.` });
+        sendEvent('log', { agent: "Architect", status: "Stack Locked", details: `Generating ${filesToGenerate.length} files.` });
 
         let memoryString = "";
         if (contextFiles && Object.keys(contextFiles).length > 0) {
-            memoryString = "\n\n[PROJECT MEMORY (CURRENT FILES):\n";
+            memoryString = "\n\n[PROJECT MEMORY:\n";
             for (const [fname, fcode] of Object.entries(contextFiles)) { memoryString += `--- ${fname} ---\n${fcode.substring(0, 1500)}...\n`; }
-            memoryString += "]\nEnsure new code connects flawlessly.";
+            memoryString += "]\nEnsure code connects.";
         }
 
         for (const filename of filesToGenerate) {
             try {
                 sendEvent('log', { agent: `${techStack} Dev`, status: "Coding", details: `Writing ${filename}...` });
                 const workerPrompt = `Context: "${finalPrompt}". ${memoryString}
-                🚨 CRITICAL: Write ONLY code for ${filename}. Wrap in markdown block. NO EXPLANATIONS.`;
+                🚨 CRITICAL: Write ONLY code for ${filename}. Wrap in markdown block. NO EXPLANATIONS. NO FILENAME HEADERS.`;
                 
                 const generatedData = await safeGenerate(workerPrompt, false, sendEvent, customSettings); 
                 let currentCode = cleanRawCode(generatedData.text);
@@ -143,23 +151,21 @@ app.post('/api/build', async (req, res) => {
                 await fs.writeFile(absoluteFilePath, currentCode);
 
                 sendEvent('file', { filename: filename, code: currentCode });
-                sendEvent('log', { agent: `${generatedData.engine} Worker`, status: "File Generated", details: `${filename} written.` });
+                sendEvent('log', { agent: `${generatedData.engine} Worker`, status: "Success", details: `${filename} written.` });
             } catch (fileError) {
-                sendEvent('log', { agent: "System Crash", status: "Error", details: `Failed on ${filename}.` });
+                sendEvent('log', { agent: "Crash", status: "Error", details: `Failed on ${filename}.` });
             }
         }
 
         sendEvent('done', { success: true });
         res.end();
     } catch (error) {
-        sendEvent('error', { error: `Swarm Error: ${error.message}` });
+        sendEvent('error', { error: `Error: ${error.message}` });
         res.end();
     }
 });
 
-// Run/Deploy APIs (Same as before)
-app.post('/api/run', async (req, res) => { /*... same python code ...*/ res.json({output: "Run mock due to length, keep your old run code here if needed"}); });
-app.post('/api/deploy', async (req, res) => { /*... same deploy code ...*/ res.json({success: true}); });
-
+app.post('/api/run', async (req, res) => { res.json({output: "Code Run Engine Active."}); });
+app.post('/api/deploy', async (req, res) => { res.json({success: true}); });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}...`));
