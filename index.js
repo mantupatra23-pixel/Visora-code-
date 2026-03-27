@@ -47,36 +47,46 @@ const initWorkspace = async () => {
 };
 initWorkspace();
 
-// 🔥 THE ULTIMATE 5-TIER FALLBACK ENGINE 🔥
-async function safeGenerate(promptText, isJson = true) {
+// 🔥 THE 5-TIER ENGINE WITH 30-SECOND AWS TIMEOUT 🔥
+async function safeGenerate(promptText, isJson = true, sendEvent = null) {
     
-    // 🥇 Tier 1: YOUR CUSTOM AWS API (100% Private & Free limits)
+    // 🥇 TIER 1: YOUR CUSTOM AWS API (30 Seconds Max Limit)
     try {
         const awsApiUrl = process.env.AWS_API_URL || "http://54.224.241.169:8000/chat";
         const finalPrompt = promptText + (isJson ? " MUST RETURN JSON FORMAT ONLY." : " MUST RETURN RAW CODE ONLY. NO MARKDOWN.");
-        
-        // Passing prompt as query parameter as defined in your FastAPI api.py
         const finalUrl = `${awsApiUrl}?prompt=${encodeURIComponent(finalPrompt)}`;
+
+        if(sendEvent) sendEvent('log', { agent: "AWS Engine", status: "Waiting", details: "Trying AWS Local Llama-3 (Max 30s limit)..." });
+
+        // ⏱️ 30 Second ka Timer (AbortController)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30000 ms = 30 seconds
 
         const awsRes = await fetch(finalUrl, {
             method: "POST",
             headers: { 
                 "Content-Type": "application/json",
-                "x-api-key": process.env.AWS_API_PASSWORD || "mantu123" // Aapka secure password
-            }
+                "x-api-key": process.env.AWS_API_PASSWORD || "mantu_godmode_secure_999" 
+            },
+            signal: controller.signal // Isse 30 sec baad request cut ho jayegi
         });
+
+        clearTimeout(timeoutId); // Agar 30 sec se pehle aa gaya toh timer band kardo
 
         if (!awsRes.ok) throw new Error(`HTTP ${awsRes.status}`);
         const awsData = await awsRes.json();
         
-        // FastAPI forwards Ollama's response which contains 'response' key
         if(awsData.error) throw new Error(awsData.error);
         return { text: awsData.response, engine: "AWS Custom Llama-3" };
         
     } catch (awsErr) {
-        console.log(`[⚠️ AWS Server Down: ${awsErr.message.substring(0, 30)}] -> Switching to Gemini...`);
+        // Agar Timer fail hua (Timeout) ya server down hua, toh turant backup par jao
+        const isTimeout = awsErr.name === 'AbortError' || awsErr.message.includes('timeout');
+        const errMsg = isTimeout ? "30s Timeout Exceeded" : awsErr.message.substring(0, 30);
         
-        // 🥈 Tier 2: Gemini
+        if(sendEvent) sendEvent('log', { agent: "System Router", status: "Switching", details: `AWS Failed (${errMsg}). Moving to Gemini...` });
+        
+        // 🥈 TIER 2: GEMINI
         try {
             if (!genAI) throw new Error("Gemini Key Missing");
             const geminiModel = genAI.getGenerativeModel({ 
@@ -86,11 +96,11 @@ async function safeGenerate(promptText, isJson = true) {
             const res = await geminiModel.generateContent(promptText);
             return { text: res.response.text(), engine: "Gemini" };
         } catch (geminiErr) {
-            console.log(`[⚠️ Gemini Down] -> Switching to Groq...`);
+            if(sendEvent) sendEvent('log', { agent: "System Router", status: "Switching", details: `Gemini Down. Moving to Groq...` });
             
-            // 🥉 Tier 3: Groq
+            // 🥉 TIER 3: GROQ
             try {
-                await sleep(1000); // 1 sec delay to avoid rate limits
+                await sleep(1000); 
                 const groqRes = await groq.chat.completions.create({ 
                     messages: [
                         { role: 'system', content: isJson ? "Output valid JSON only." : "Output ONLY raw code. No markdown." },
@@ -102,9 +112,9 @@ async function safeGenerate(promptText, isJson = true) {
                 });
                 return { text: groqRes.choices[0].message.content, engine: "Groq" };
             } catch (groqErr) {
-                console.log(`[⚠️ Groq Down] -> Switching to OpenRouter...`);
+                if(sendEvent) sendEvent('log', { agent: "System Router", status: "Switching", details: `Groq Down. Engaging OpenRouter/HF...` });
                 
-                // 🏅 Tier 4: OpenRouter
+                // 🏅 TIER 4: OPENROUTER
                 try {
                     if (!OPENROUTER_KEY) throw new Error("OpenRouter Key Missing");
                     await sleep(1000);
@@ -126,9 +136,8 @@ async function safeGenerate(promptText, isJson = true) {
                     const openRouterData = JSON.parse(orText);
                     return { text: openRouterData.choices[0].message.content, engine: "OpenRouter" };
                 } catch (openRouterErr) {
-                    console.log(`[⚠️ OpenRouter Down] -> Switching to HF...`);
                     
-                    // 🎖️ Tier 5: Hugging Face (Zephyr Model)
+                    // 🎖️ TIER 5: HUGGING FACE
                     try {
                         if (!HF_KEY) throw new Error("HF Key Missing");
                         await sleep(1000);
@@ -142,7 +151,6 @@ async function safeGenerate(promptText, isJson = true) {
                         const hfData = JSON.parse(hfText);
                         return { text: hfData[0].generated_text.split('<|assistant|>')[1] || hfData[0].generated_text, engine: "HuggingFace" };
                     } catch (hfErr) {
-                        console.log(`[❌ ALL 5 ENGINES DOWN]`);
                         throw new Error("CRITICAL_QUOTA_EMPTY"); 
                     }
                 }
@@ -152,19 +160,29 @@ async function safeGenerate(promptText, isJson = true) {
 }
 
 app.get('/api/env', (req, res) => {
-    res.json({ success: true, variables: { MANTU_AI_STATUS: "5-TIER AWS-FIRST GOD MODE ACTIVE" } });
+    res.json({ success: true, variables: { MANTU_AI_STATUS: "LIVE STREAMING + 30s AWS TIMEOUT ACTIVE" } });
 });
 
+// 🔥 LIVE STREAMING ENDPOINT (1-BY-1 FILES) 🔥
 app.post('/api/build', async (req, res) => {
     const { prompt } = req.body; 
-    console.log(`\n[🚀 Final 5-Tier Swarm Initiated]`);
+    console.log(`\n[🚀 Live Stream Swarm Initiated]`);
+
+    // Headers set for Server-Sent Events (SSE)
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+    });
+
+    const sendEvent = (type, data) => {
+        res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    };
 
     try {
-        let masterLogs = [];
-        let masterFiles = {};
         let finalPrompt = prompt + "\n[CRITICAL: Use modern standards.]";
 
-        masterLogs.push({ agent: "Omni-Master", status: "Planning Blueprint", details: "Designing architecture..." });
+        sendEvent('log', { agent: "Omni-Master", status: "Planning Blueprint", details: "Designing architecture..." });
         
         const masterPrompt = `You are the Omni-Language Master. Request: "${finalPrompt}"
         Determine Tech Stack, EXACT file paths with nested folders, and NPM packages.
@@ -172,103 +190,57 @@ app.post('/api/build', async (req, res) => {
 
         let masterData;
         try {
-            // Master Agent (Groq for blazing fast folder planning)
             const masterRes = await groq.chat.completions.create({ messages: [{ role: 'system', content: masterPrompt }], model: MASTER_MODEL, temperature: 0.1, response_format: { type: 'json_object' } });
             masterData = JSON.parse(masterRes.choices[0].message.content);
         } catch (e) {
-            try {
-                // If Groq limits are out, fallback to the 5-Tier Engine
-                const backupMaster = await safeGenerate(masterPrompt, true);
-                masterData = extractJson(backupMaster.text);
-            } catch (criticalErr) {
-                return res.json({ success: false, error: "⚠️ ALERT: Aapka AWS Server aur saari 4 Cloud APIs thak chuki hain! Kripya AWS check karein ya naye API keys daalein." });
-            }
+            const backupMaster = await safeGenerate(masterPrompt, true, sendEvent);
+            masterData = extractJson(backupMaster.text);
         }
 
         const techStack = masterData?.tech_stack || "React";
         const filesToGenerate = masterData?.files_needed || ["src/App.jsx"];
-        const dependencies = masterData?.dependencies || [];
         
-        masterLogs.push({ agent: "System Architect", status: "Stack Locked", details: `Generating ${filesToGenerate.length} files.` });
+        sendEvent('log', { agent: "System Architect", status: "Stack Locked", details: `Generating ${filesToGenerate.length} files.` });
 
+        // Loop files 1-by-1
         for (const filename of filesToGenerate) {
             try {
-                await sleep(3000); 
-
+                sendEvent('log', { agent: `${techStack} Dev`, status: "Deep Coding", details: `Writing logic for ${filename}...` });
+                
                 const workerPrompt = `You are an Elite Developer. Project Context: "${finalPrompt}".
                 🚨 CRITICAL: YOU ARE ONLY WRITING CODE FOR ${filename}. Do not write other files.
                 Return ONLY the raw functional code. DO NOT wrap it in JSON. DO NOT use markdown blocks like \`\`\`javascript. Just the pure code text.`;
                 
-                // Deep Coding using the 5-Tier Fallback
-                const generatedData = await safeGenerate(workerPrompt, false); 
+                // Safe Generate with Event Sender
+                const generatedData = await safeGenerate(workerPrompt, false, sendEvent); 
                 let currentCode = cleanRawCode(generatedData.text);
                 
                 currentCode = `/* \n * 🚀 Code Generated by Mantu AI \n * 🧠 Active Engine: ${generatedData.engine}\n */\n\n` + currentCode;
                 
-                masterLogs.push({ 
-                    agent: `${generatedData.engine} Worker`, 
-                    status: "Deep Coding", 
-                    details: `Code successfully written by ${generatedData.engine} engine.` 
-                });
-
                 const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
                 await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true });
                 await fs.writeFile(absoluteFilePath, currentCode);
 
-                let executionError = null;
-                masterLogs.push({ agent: "Sandbox Engine", status: "Terminal Testing", details: `Evaluating ${filename}...` });
-                try {
-                    if (filename.endsWith('.js') && !filename.includes('react') && !filename.endsWith('config.js')) {
-                        await execPromise(`node -c "${absoluteFilePath}"`);
-                    } else if (filename.endsWith('.py')) {
-                        await execPromise(`python -m py_compile "${absoluteFilePath}"`);
-                    }
-                    masterLogs.push({ agent: "Sandbox Engine", status: "Test Passed", details: "Zero syntax errors." });
-                } catch (execErr) {
-                    executionError = execErr.message;
-                    masterLogs.push({ agent: "Auto-Heal Alert", status: "Execution Failed", details: `Terminal error detected.` });
-                }
-
-                if (executionError) {
-                    await sleep(2000);
-                    const qaPrompt = `Fix this terminal error:\n${executionError}\n\nCode:\n${currentCode}\nReturn ONLY the raw fixed code. DO NOT wrap it in JSON. NO markdown blocks.`;
-                    
-                    const qaData = await safeGenerate(qaPrompt, false);
-                    let fixedCode = cleanRawCode(qaData.text);
-                    
-                    fixedCode = `/* \n * 🚀 Code Fixed by Mantu AI \n * 🧠 QA Engine: ${qaData.engine}\n */\n\n` + fixedCode;
-
-                    await fs.writeFile(absoluteFilePath, fixedCode);
-                    masterLogs.push({ agent: `${qaData.engine} QA`, status: "Bug Fixed", details: `Terminal error auto-healed.` });
-                    currentCode = fixedCode;
-                }
-                masterFiles[filename] = currentCode;
+                // 🔥 SEND FILE IMMEDIATELY TO FRONTEND 🔥
+                sendEvent('file', { filename: filename, code: currentCode });
+                sendEvent('log', { agent: `${generatedData.engine} Worker`, status: "File Generated", details: `${filename} successfully written.` });
 
             } catch (fileError) {
                 if (fileError.message === "CRITICAL_QUOTA_EMPTY") {
-                    return res.json({ success: false, error: "⚠️ ALERT: Saare 5 Engines (AWS + 4 Cloud APIs) down hain! AWS server chalu karein." });
+                    sendEvent('error', { error: "⚠️ ALERT: Saare 5 Engines (AWS + 4 Cloud APIs) down hain! AWS server chalu karein." });
+                    break;
                 }
-                masterLogs.push({ agent: "System Crash", status: "API Exhausted", details: `Failed on ${filename}.` });
+                sendEvent('log', { agent: "System Crash", status: "API Exhausted", details: `Failed on ${filename}.` });
             }
         }
 
-        if (dependencies.length > 0) {
-            masterLogs.push({ agent: "Dependency Manager", status: "Installing Packages", details: `Running npm install...` });
-            try {
-                try { await fs.access(path.join(WORKSPACE_DIR, 'package.json')); } 
-                catch { await fs.writeFile(path.join(WORKSPACE_DIR, 'package.json'), JSON.stringify({ name: "mantu-app", version: "1.0.0" })); }
-                await execPromise(`npm install ${dependencies.join(' ')}`, { cwd: WORKSPACE_DIR });
-                masterLogs.push({ agent: "Dependency Manager", status: "Installation Complete", details: "Packages installed." });
-            } catch (npmErr) {
-                masterLogs.push({ agent: "Dependency Manager", status: "Install Failed", details: "Could not install packages." });
-            }
-        }
-
-        masterLogs.push({ agent: "Deployment Manager", status: "Success", details: `Project built perfectly!` });
-        res.json({ success: true, logs: masterLogs, files: masterFiles });
+        sendEvent('log', { agent: "Deployment Manager", status: "Success", details: `Project built perfectly!` });
+        sendEvent('done', { success: true });
+        res.end(); // Close the stream properly
 
     } catch (error) {
-        res.json({ success: false, error: `Swarm Error: ${error.message}` });
+        sendEvent('error', { error: `Swarm Error: ${error.message}` });
+        res.end();
     }
 });
 
