@@ -9,6 +9,10 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 require('dotenv').config();
 
+// 🌐 ADVANCE LEVEL: WebSockets For Live Deployment Logs
+const http = require('http');
+const { Server } = require('socket.io');
+
 const { GoogleGenerativeAI } = require('@google/generative-ai'); 
 const Groq = require('groq-sdk');
 
@@ -16,9 +20,20 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '100mb' })); 
 
+// 🚀 Initialize HTTP Server with WebSockets
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+io.on('connection', (socket) => {
+    console.log(`🟢 CTO Connected to Mantu AI Live Stream: ${socket.id}`);
+});
+
 const WORKSPACE_DIR = path.join(__dirname, 'mantu_workspace');
 if (!fsSync.existsSync(WORKSPACE_DIR)){ fsSync.mkdirSync(WORKSPACE_DIR, { recursive: true }); }
 
+// ==============================================================
+// 🛠️ UTILITY FUNCTIONS
+// ==============================================================
 const extractJson = (text) => {
     try {
         let cleanText = text.replace(/```(json)?/gi, '').replace(/```/gi, '').trim();
@@ -48,17 +63,18 @@ const parseBase64 = (dataUrl) => {
 };
 
 // ==============================================================
-// 🤖 THE CASCADING AI ENGINE (AWS -> GROQ -> GEMINI)
+// 🤖 THE CASCADING AI ENGINE (1st AWS -> 2nd Groq -> 3rd Gemini)
 // ==============================================================
 async function safeGenerate(promptText, isJson = true, sendEvent = null, customConfig = {}, attachments = {}) {
     const groqKey = process.env.GROQ_API_KEY || customConfig.groqKey;
     const geminiKey = process.env.GEMINI_API_KEY || customConfig.geminiKey; 
     const awsLlmUrl = process.env.AWS_LLM_URL;
 
+    // Multimodal (Images/Voice) directly goes to Gemini Vision
     if (attachments.image || attachments.voice) {
         if(sendEvent) sendEvent('log', { agent: "Gemini Vision", status: "Computing", details: `Analyzing visual/audio data...` });
         try {
-            if (!geminiKey) throw new Error("Gemini API Key missing in backend .env.");
+            if (!geminiKey) throw new Error("Gemini API Key missing.");
             const genAI = new GoogleGenerativeAI(geminiKey);
             const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' }); 
             let parts = [promptText];
@@ -72,66 +88,96 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null, customC
             }
             const res = await geminiModel.generateContent(parts);
             return { text: res.response.text(), engine: "Gemini Multimodal" };
-        } catch (err) {
-            console.error("Gemini Error:", err.message);
-            throw err;
-        }
+        } catch (err) { throw err; }
     }
 
     let finalPrompt = promptText;
-    if (attachments.voiceUrl) finalPrompt += `\n[User referenced this Audio URL: ${attachments.voiceUrl}]`;
+    if (attachments.voiceUrl) finalPrompt += `\n[Audio URL: ${attachments.voiceUrl}]`;
 
+    // 🏆 PRIORITY 1: AWS LOCAL LLM
     if (awsLlmUrl) {
         try {
             if(sendEvent) sendEvent('log', { agent: "AWS Worker", status: "Computing", details: `Connecting to self-hosted AI...` });
-            console.log(`[AI ENGINE] Trying AWS Local LLM at ${awsLlmUrl}...`);
             const awsRes = await fetch(`${awsLlmUrl}/v1/chat/completions`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: "llama3", messages: [{ role: "system", content: isJson ? "Output strictly valid JSON without markdown." : "Output strictly raw code without markdown." }, { role: "user", content: finalPrompt }], temperature: 0.2 })
+                body: JSON.stringify({ model: "llama3", messages: [{ role: "system", content: isJson ? "Output valid JSON." : "Output raw code." }, { role: "user", content: finalPrompt }], temperature: 0.2 })
             });
-
             if (awsRes.ok) {
                 const awsData = await awsRes.json();
                 return { text: awsData.choices[0].message.content, engine: "AWS Local Llama" };
             }
-        } catch (err) {
-            console.log(`[AI ENGINE] AWS AI unreachable, falling back to Groq...`);
-            if(sendEvent) sendEvent('log', { agent: "System", status: "Warning", details: `AWS unreachable, switching to Groq...` });
-        }
+        } catch (err) { console.log(`AWS AI unreachable, falling back to Groq...`); }
     }
 
+    // ⚡ PRIORITY 2: GROQ CLOUD
     if (groqKey) {
         try {
-            if(sendEvent) sendEvent('log', { agent: "GROQ Engine", status: "Computing", details: `Writing code via Groq...` });
-            console.log(`[AI ENGINE] Using Groq Llama-3...`);
+            if(sendEvent) sendEvent('log', { agent: "GROQ Engine", status: "Computing", details: `Writing via Groq...` });
             const groq = new Groq({ apiKey: groqKey });
             const groqRes = await groq.chat.completions.create({ 
-                messages: [ { role: 'system', content: isJson ? "Output strictly valid JSON." : "Output strictly raw code." }, { role: 'user', content: finalPrompt } ], 
+                messages: [ { role: 'system', content: isJson ? "Output valid JSON." : "Output raw code." }, { role: 'user', content: finalPrompt } ], 
                 model: 'llama-3.3-70b-versatile', temperature: 0.2, response_format: isJson ? { type: 'json_object' } : null 
             });
             return { text: groqRes.choices[0].message.content, engine: "Groq Llama-3" };
-        } catch (err) {
-            console.log(`[AI ENGINE] Groq failed (${err.message}), falling back to Gemini...`);
-            if(sendEvent) sendEvent('log', { agent: "System", status: "Warning", details: `Groq failed, switching to Gemini...` });
-        }
+        } catch (err) { console.log(`Groq failed, falling back to Gemini...`); }
     }
 
+    // 🧠 PRIORITY 3: GEMINI PRO
     try {
-        if (!geminiKey) throw new Error("Gemini Key missing in backend .env");
-        if(sendEvent) sendEvent('log', { agent: "Gemini Engine", status: "Computing", details: `Writing code via Gemini...` });
-        console.log(`[AI ENGINE] Using Gemini Fallback...`);
+        if (!geminiKey) throw new Error("Gemini Key missing.");
+        if(sendEvent) sendEvent('log', { agent: "Gemini Engine", status: "Computing", details: `Writing via Gemini...` });
         const genAI = new GoogleGenerativeAI(geminiKey);
         const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-pro', generationConfig: isJson ? { responseMimeType: "application/json" } : {} });
         const res = await geminiModel.generateContent(finalPrompt);
         return { text: res.response.text(), engine: "Gemini Text" };
-    } catch (err) {
-        console.error("[AI ENGINE] Critical Failure: All AI engines failed.");
-        throw new Error(`Fallback Cascade Failed: Check API Keys or AWS status.`);
+    } catch (err) { throw new Error(`All AI engines failed in the cascade.`); }
+}
+
+// ==============================================================
+// 🏥 MANTU AI: THE SELF-HEALING ENGINE (Auto-Error Fixer)
+// ==============================================================
+async function autoHealCode(errorLog, filesObject, customSettings) {
+    io.emit('deploy-log', `\n🚨 [SELF-HEALING INITIATED] AI is analyzing the crash log...\n`);
+    
+    // Guessing the file that caused the error based on basic string matching
+    let suspectedFile = "frontend/src/App.jsx"; // Default fallback
+    if (errorLog.includes("backend") || errorLog.includes("python") || errorLog.includes("uvicorn")) suspectedFile = "backend/main.py";
+    if (errorLog.includes("package.json")) suspectedFile = "frontend/package.json";
+    
+    let brokenCode = filesObject[suspectedFile] || "// File content not found in current payload";
+
+    const healPrompt = `You are an Elite Enterprise CTO. The deployment crashed.
+    Suspected File: "${suspectedFile}"
+    Error Log from AWS Server:
+    ${errorLog}
+    
+    Broken Code Context:
+    ${brokenCode}
+    
+    Fix the bug immediately. Return ONLY the complete, corrected raw code for ${suspectedFile}. No markdown formats, no explanations.`;
+
+    try {
+        const fixedData = await safeGenerate(healPrompt, false, null, customSettings); 
+        let fixedCode = cleanRawCode(fixedData.text);
+        
+        // Update the file payload with fixed code
+        filesObject[suspectedFile] = fixedCode;
+        
+        // Save to workspace as well
+        const absoluteFilePath = path.join(WORKSPACE_DIR, suspectedFile);
+        await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true });
+        await fs.writeFile(absoluteFilePath, fixedCode);
+
+        io.emit('deploy-log', `\n✅ [SELF-HEALING SUCCESS] Bug fixed in ${suspectedFile} by ${fixedData.engine}! Resuming deployment...\n`);
+        return filesObject; // Return the healed files
+    } catch (error) {
+        io.emit('deploy-log', `\n❌ [SELF-HEALING FAILED] AI could not fix the error: ${error.message}\n`);
+        return null;
     }
 }
 
 // ==========================================
-// 🏗️ 1. MAIN BUILD API (Code Generation)
+// 🏗️ MAIN BUILD API (Code Generation)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
@@ -141,131 +187,146 @@ app.post('/api/build', async (req, res) => {
         const { prompt, image, voice, voiceUrl, customSettings } = req.body;
         if (!prompt) throw new Error("Prompt is required");
         
-        console.log(`\n🚀 [NEW PROJECT REQUEST] -> ${prompt.substring(0, 50)}...`);
         sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Initializing Enterprise Engine..." });
 
         const masterPrompt = `You are an Elite Enterprise CTO. Design the backend and frontend architecture for this idea: "${prompt}". 
-        CRITICAL RULE: You MUST use proper nested folder paths in the filenames (e.g., "backend/main.py", "backend/routes/auth.py", "frontend/src/App.jsx").
-        Return ONLY a JSON object exactly like this: {"tech_stack": "React/FastAPI", "files_needed": ["frontend/package.json", "backend/requirements.txt", "backend/main.py"]}. No explanations.`;
+        CRITICAL RULE: You MUST use proper nested folder paths in the filenames (e.g., "backend/main.py", "frontend/src/App.jsx").
+        Return ONLY a JSON object exactly like this: {"tech_stack": "React/FastAPI", "files_needed": ["frontend/package.json", "backend/main.py"]}. No explanations.`;
         
         let masterData = await safeGenerate(masterPrompt, true, sendEvent, customSettings, { image, voice, voiceUrl });
         const architecture = extractJson(masterData.text);
         const filesToGenerate = architecture.files_needed || ["backend/main.py", "frontend/src/App.jsx"];
         
-        console.log(`📂 Architecture created. Files to build: ${filesToGenerate.length}`);
-        sendEvent('log', { agent: "Architect", status: "Success", details: `Project requires ${filesToGenerate.length} files. Stack: ${architecture.tech_stack}` });
+        sendEvent('log', { agent: "Architect", status: "Success", details: `Project requires ${filesToGenerate.length} files.` });
+
+        let generatedFiles = {};
 
         for (const filename of filesToGenerate) {
             try {
-                sendEvent('log', { agent: "Developer", status: "Coding", details: `Writing robust code for ${filename}...` });
-                
-                const workerPrompt = `You are a Senior Full Stack Developer. Write the COMPLETE, production-ready code for the file: "${filename}" based on this project: "${prompt}". Tech stack: ${architecture.tech_stack}.
-                CRITICAL: Output ONLY the raw code for this file. No markdown formatting (\`\`\`python). No explanations.`;
-                
+                sendEvent('log', { agent: "Developer", status: "Coding", details: `Writing code for ${filename}...` });
+                const workerPrompt = `Write COMPLETE code for "${filename}" for project: "${prompt}". Output ONLY raw code.`;
                 const generatedData = await safeGenerate(workerPrompt, false, sendEvent, customSettings, { image, voice, voiceUrl }); 
                 let currentCode = cleanRawCode(generatedData.text);
                 
+                generatedFiles[filename] = currentCode;
+
                 const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
                 await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true });
                 await fs.writeFile(absoluteFilePath, currentCode);
 
-                console.log(`✅ Generated: ${filename} (Engine: ${generatedData.engine})`);
                 sendEvent('file', { filename: filename, code: currentCode });
                 sendEvent('log', { agent: `${generatedData.engine}`, status: "Success", details: `✅ ${filename} completed.` });
-            } catch (fileError) {
-                console.error(`❌ Failed on ${filename}:`, fileError.message);
-                sendEvent('log', { agent: "Crash", status: "Error", details: `Failed on ${filename}: ${fileError.message}` });
-            }
+            } catch (fileError) { sendEvent('log', { agent: "Crash", status: "Error", details: `Failed on ${filename}` }); }
         }
-
-        console.log(`🎉 Project Generation Complete!`);
         sendEvent('log', { agent: "System", status: "Done", details: "All files generated successfully!" });
-        sendEvent('done', { success: true });
+        sendEvent('done', { success: true, files: generatedFiles });
         res.end();
     } catch (error) { 
-        console.error("❌ Fatal Build Error:", error.message);
         sendEvent('error', { error: error.message }); 
         res.end(); 
     }
 });
 
 // ==========================================
-// 🌩️ MANTU AI: THE AWS AUTO-DEPLOY ENGINE
+// 🌩️ MANTU AI: LIVE WEBSOCKET DEPLOY ENGINE (With Auto-Heal)
 // ==========================================
 app.post('/api/publish-aws', async (req, res) => {
-    const { files, targetIp, authKey } = req.body;
-    if (!targetIp || !authKey) return res.json({ error: "AWS Server IP and .pem key/password are required!" });
+    let { files, targetIp, authKey, customSettings, isRetry = false } = req.body;
+    if (!targetIp || !authKey) return res.json({ error: "AWS Server IP and .pem key required!" });
 
-    try {
-        const timestamp = Date.now();
-        const zipName = `mantu_aws_${timestamp}.zip`;
-        const zipPath = path.join(__dirname, zipName);
-        const pemName = `key_${timestamp}.pem`;
-        const pemPath = path.join(__dirname, pemName);
+    const deployLogic = async (filesToDeploy, attemptNumber = 1) => {
+        try {
+            const timestamp = Date.now();
+            const zipName = `mantu_aws_${timestamp}.zip`;
+            const zipPath = path.join(__dirname, zipName);
+            const pemName = `key_${timestamp}.pem`;
+            const pemPath = path.join(__dirname, pemName);
 
-        // 1. Create a Zip file of the code
-        const output = fsSync.createWriteStream(zipPath);
-        const archive = archiver('zip', { zlib: { level: 9 } }); 
-        archive.pipe(output);
-        for (const [filename, content] of Object.entries(files || {})) {
-            archive.append(content, { name: filename });
+            // 1. Pack the Code
+            const output = fsSync.createWriteStream(zipPath);
+            const archive = archiver('zip', { zlib: { level: 9 } }); 
+            archive.pipe(output);
+            for (const [filename, content] of Object.entries(filesToDeploy || {})) { archive.append(content, { name: filename }); }
+            await archive.finalize();
+            await new Promise(resolve => output.on('close', resolve));
+
+            const formattedKey = authKey.replace(/\\n/g, '\n'); 
+            await fs.writeFile(pemPath, formattedKey, { mode: 0o400 });
+
+            io.emit('deploy-log', `\n📦 Uploading Code to AWS (${targetIp}) [Attempt ${attemptNumber}]...`);
+            
+            const scpCommand = `scp -o StrictHostKeyChecking=no -i ${pemPath} ${zipPath} ubuntu@${targetIp}:/tmp/mantu_app.zip`;
+            await execPromise(scpCommand);
+            
+            io.emit('deploy-log', `✅ Upload Complete!\n⚙️ Starting NGINX & PM2 Auto-Pilot Pipeline...\n`);
+
+            // NGINX + PM2 Advanced SSH Command
+            const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "
+                mkdir -p /home/ubuntu/mantu_app &&
+                unzip -o /tmp/mantu_app.zip -d /home/ubuntu/mantu_app &&
+                sudo apt-get update -y && sudo apt-get install nginx -y &&
+                if [ -d '/home/ubuntu/mantu_app/frontend' ]; then
+                    echo '>> Building Frontend for NGINX...' && cd /home/ubuntu/mantu_app/frontend && npm install && npm run build &&
+                    sudo rm -rf /var/www/html/* && sudo cp -r dist/* /var/www/html/ && sudo systemctl restart nginx ;
+                fi &&
+                if [ -d '/home/ubuntu/mantu_app/backend' ]; then
+                    echo '>> Starting Backend with PM2...' && sudo npm install -g pm2 && cd /home/ubuntu/mantu_app/backend &&
+                    pip3 install -r requirements.txt || true && sudo fuser -k 8000/tcp || true &&
+                    pm2 delete neovid-api || true && pm2 start 'python3 -m uvicorn main:app --host 0.0.0.0 --port 8000' --name 'neovid-api' ;
+                fi &&
+                echo '>> 🚀 Deployment Command Executed successfully!'
+            "`;
+
+            let collectedErrors = "";
+            const deployProcess = exec(sshCommand);
+            
+            deployProcess.stdout.on('data', (data) => {
+                io.emit('deploy-log', data.toString()); 
+            });
+
+            deployProcess.stderr.on('data', (data) => {
+                const errText = data.toString();
+                io.emit('deploy-log', `⚠️ AWS LOG: ${errText}`);
+                // Catch severe errors like npm ERR or Python SyntaxError
+                if (errText.includes("ERR!") || errText.includes("SyntaxError") || errText.includes("failed")) {
+                    collectedErrors += errText + "\n";
+                }
+            });
+
+            deployProcess.on('close', async (code) => {
+                fsSync.unlinkSync(zipPath); fsSync.unlinkSync(pemPath);
+
+                // 🔥 TRIGGER SELF-HEALING IF ERROR FOUND
+                if (collectedErrors && attemptNumber === 1) {
+                    const healedFiles = await autoHealCode(collectedErrors, filesToDeploy, customSettings);
+                    if (healedFiles) {
+                        io.emit('deploy-log', `\n🔄 Retrying deployment with healed code...\n`);
+                        return deployLogic(healedFiles, 2); // Recursively retry once
+                    }
+                }
+
+                if (code !== 0 && attemptNumber >= 2) {
+                    io.emit('deploy-log', `\n❌ Deployment Failed after Auto-Heal attempt.`);
+                    if (!res.headersSent) res.json({ error: "Deployment failed after healing." });
+                } else {
+                    io.emit('deploy-log', `\n🎉 SUCCESS! App is LIVE at: http://${targetIp}`);
+                    if (!res.headersSent) res.json({ success: true, url: `http://${targetIp}` });
+                }
+            });
+
+        } catch (error) { 
+            io.emit('deploy-log', `❌ CRITICAL ERROR: ${error.message}`);
+            if (!res.headersSent) res.json({ error: `AWS Deployment Failed: ${error.message}` }); 
         }
-        await archive.finalize();
-        await new Promise(resolve => output.on('close', resolve));
+    };
 
-        // 2. Format and save the PEM key
-        const formattedKey = authKey.replace(/\\n/g, '\n'); 
-        await fs.writeFile(pemPath, formattedKey, { mode: 0o400 });
-
-        console.log(`📦 Uploading Code to AWS (${targetIp})...`);
-        const scpCommand = `scp -o StrictHostKeyChecking=no -i ${pemPath} ${zipPath} ubuntu@${targetIp}:/tmp/mantu_app.zip`;
-        await execPromise(scpCommand);
-
-        console.log(`⚙️ Executing PM2 Auto-Pilot on AWS...`);
-        // 3. The Master SSH Command (Full Automation)
-        const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "
-            echo 'Extracting Files...' &&
-            mkdir -p /home/ubuntu/mantu_app &&
-            unzip -o /tmp/mantu_app.zip -d /home/ubuntu/mantu_app &&
-
-            echo 'Ensuring PM2 is installed...' &&
-            sudo npm install -g pm2 &&
-
-            echo 'Starting Frontend Auto-Pilot...' &&
-            if [ -d '/home/ubuntu/mantu_app/frontend' ]; then
-                cd /home/ubuntu/mantu_app/frontend &&
-                npm install &&
-                sudo fuser -k 80/tcp || true &&
-                sudo pm2 delete neovid-ui || true &&
-                sudo pm2 start npm --name 'neovid-ui' -- run dev -- --host 0.0.0.0 --port 80 ;
-            fi &&
-
-            echo 'Starting Backend Auto-Pilot...' &&
-            if [ -d '/home/ubuntu/mantu_app/backend' ]; then
-                cd /home/ubuntu/mantu_app/backend &&
-                pip3 install -r requirements.txt || true &&
-                sudo fuser -k 8000/tcp || true &&
-                pm2 delete neovid-api || true &&
-                pm2 start 'python3 -m uvicorn main:app --host 0.0.0.0 --port 8000' --name 'neovid-api' ;
-            fi &&
-
-            echo '✅ Deployment 100% Successful!'
-        "`;
-
-        const { stdout } = await execPromise(sshCommand);
-        console.log("AWS Log:", stdout);
-
-        // Cleanup temporary files
-        fsSync.unlinkSync(zipPath); 
-        fsSync.unlinkSync(pemPath);
-        
-        res.json({ success: true, url: `http://${targetIp}`, log: stdout });
-    } catch (error) { 
-        console.error("Deploy Error:", error);
-        res.json({ error: `AWS Deployment Failed. Details: ${error.message}` }); 
-    }
+    // Start the deployment logic
+    deployLogic(files, 1);
 });
 
+// ==========================================
+// 🌩️ OTHER PUBLISH & UTILITY ROUTES
+// ==========================================
 app.post('/api/publish-cloud', async (req, res) => {
     const { files, netlifyToken } = req.body;
     if (!netlifyToken) return res.json({ error: "Netlify Deploy Token is missing." });
@@ -312,5 +373,6 @@ app.post('/api/build-apk', async (req, res) => {
     res.json({ success: true, apkUrl: "https://mantu-cloud.com/downloads/neovid-beta.apk" });
 });
 
+// 🚀 Start Mantu Enterprise OS Server
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Mantu Enterprise Backend running perfectly on port ${PORT}...`));
+server.listen(PORT, () => console.log(`🚀 Mantu Enterprise Backend (WebSockets + Self-Healing AI) running on port ${PORT}...`));
