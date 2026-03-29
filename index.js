@@ -42,7 +42,7 @@ const extractJson = (text) => {
         if (start !== -1 && end !== -1) cleanText = cleanText.substring(start, end + 1);
         return JSON.parse(cleanText);
     } catch (e) { 
-        return { tech_stack: "FastAPI/React", files_needed: ["backend/main.py", "frontend/src/App.jsx", "README.md"] };
+        return { tech_stack: "Vite React/FastAPI", files_needed: ["backend/main.py", "frontend/src/App.jsx", "frontend/package.json"] };
     }
 };
 
@@ -133,11 +133,11 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null, customC
 async function autoHealCode(errorLog, filesObject, customSettings) {
     io.emit('deploy-log', `\n🚨 [SELF-HEALING] Analyzing crash log...\n`);
     let suspectedFile = "frontend/src/App.jsx"; 
-    if (errorLog.includes("backend") || errorLog.includes("python")) suspectedFile = "backend/main.py";
-    if (errorLog.includes("package.json")) suspectedFile = "frontend/package.json";
+    if (errorLog.includes("backend") || errorLog.includes("python") || errorLog.includes("uvicorn") || errorLog.includes("fastapi")) suspectedFile = "backend/main.py";
+    if (errorLog.includes("package.json") || errorLog.includes("vite")) suspectedFile = "frontend/package.json";
     
     let brokenCode = filesObject[suspectedFile] || "// File content not found";
-    const healPrompt = `Fix the bug in "${suspectedFile}".\nError Log:\n${errorLog}\nBroken Code:\n${brokenCode}\nReturn ONLY the corrected raw code.`;
+    const healPrompt = `Fix the bug in "${suspectedFile}".\nError Log:\n${errorLog}\nBroken Code:\n${brokenCode}\nCRITICAL: Output ONLY the raw corrected code. Must use modern standards (Vite/Tailwind for React, FastAPI for Python).`;
 
     try {
         const fixedData = await safeGenerate(healPrompt, false, null, customSettings); 
@@ -149,7 +149,7 @@ async function autoHealCode(errorLog, filesObject, customSettings) {
 }
 
 // ==========================================
-// 🏗️ MAIN BUILD API
+// 🏗️ MAIN BUILD API (STRICT ARCHITECTURE)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
@@ -159,15 +159,28 @@ app.post('/api/build', async (req, res) => {
         const { prompt, image, voice, voiceUrl, customSettings } = req.body;
         sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Initializing Enterprise Engine..." });
 
-        const masterPrompt = `Design architecture for: "${prompt}". Return ONLY JSON: {"tech_stack": "React/FastAPI", "files_needed": ["frontend/package.json", "backend/main.py"]}.`;
+        // 🔥 ULTRA-STRICT MASTER PROMPT FOR VITE & FASTAPI
+        const masterPrompt = `You are an Elite Enterprise CTO. Design the backend and frontend architecture for: "${prompt}". 
+        CRITICAL RULES:
+        1. FOR FRONTEND: You MUST use React with VITE and Tailwind CSS. NEVER use 'react-scripts'. Always include "frontend/vite.config.js", "frontend/index.html", "frontend/src/main.jsx", and "frontend/package.json".
+        2. FOR BACKEND: You MUST use modern Python FastAPI (not Flask). Always include "backend/main.py" and "backend/requirements.txt".
+        3. You MUST use proper nested folder paths in the filenames.
+        Return ONLY a JSON object exactly like this: {"tech_stack": "Vite React/FastAPI", "files_needed": ["frontend/package.json", "frontend/vite.config.js", "frontend/index.html", "frontend/src/main.jsx", "frontend/src/App.jsx", "backend/requirements.txt", "backend/main.py"]}. No markdown, no explanations.`;
+        
         let masterData = await safeGenerate(masterPrompt, true, sendEvent, customSettings, { image, voice, voiceUrl });
         const architecture = extractJson(masterData.text);
-        const filesToGenerate = architecture.files_needed || ["backend/main.py", "frontend/src/App.jsx"];
+        const filesToGenerate = architecture.files_needed || ["backend/main.py", "frontend/src/App.jsx", "frontend/package.json"];
         
         let generatedFiles = {};
         for (const filename of filesToGenerate) {
             try {
-                const workerPrompt = `Write COMPLETE code for "${filename}" for project: "${prompt}". Output ONLY raw code.`;
+                sendEvent('log', { agent: "Developer", status: "Coding", details: `Writing code for ${filename}...` });
+                
+                // 🔥 ULTRA-STRICT WORKER PROMPT
+                const workerPrompt = `You are a Senior Full Stack Developer. Write the COMPLETE, production-ready code for the file: "${filename}" based on this project: "${prompt}". 
+                CRITICAL: If it's a package.json, ensure Vite, TailwindCSS, and lucide-react dependencies are included. If it's App.jsx, ensure it has a beautiful Dark Theme UI using Tailwind. If it's backend, use FastAPI.
+                Output ONLY the raw code for this file. No markdown formatting like \`\`\`javascript. No explanations.`;
+                
                 const generatedData = await safeGenerate(workerPrompt, false, sendEvent, customSettings, { image, voice, voiceUrl }); 
                 let currentCode = cleanRawCode(generatedData.text);
                 generatedFiles[filename] = currentCode;
@@ -180,7 +193,7 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// 🚀 THE ULTIMATE DEPLOY ENGINE (WITH BACKUP FOR TIME MACHINE)
+// 🚀 THE ULTIMATE DEPLOY ENGINE (WITH TIME MACHINE BACKUP)
 // ==========================================
 app.post('/api/publish-aws', async (req, res) => {
     let { files, targetIp, authKey, customSettings } = req.body;
@@ -204,23 +217,22 @@ app.post('/api/publish-aws', async (req, res) => {
             io.emit('deploy-log', `\n📦 Uploading Code to AWS (${targetIp})...`);
             await execPromise(`scp -o StrictHostKeyChecking=no -i ${pemPath} ${zipPath} ubuntu@${targetIp}:/tmp/mantu_app.zip`);
             
-            // 🔥 Time Machine Prep: Create a backup before overwriting!
             const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "
                 echo '>> Creating Time Machine Backup...' &&
                 rm -rf /home/ubuntu/mantu_app_backup &&
                 cp -r /home/ubuntu/mantu_app /home/ubuntu/mantu_app_backup || true &&
-
+                
                 mkdir -p /home/ubuntu/mantu_app &&
                 unzip -o /tmp/mantu_app.zip -d /home/ubuntu/mantu_app &&
                 sudo apt-get update -y && sudo apt-get install nginx -y &&
-
+                
                 if [ -d '/home/ubuntu/mantu_app/frontend' ]; then
-                    echo '>> Building UI...' && cd /home/ubuntu/mantu_app/frontend && npm install && npm run build &&
+                    echo '>> Building UI (Vite)...' && cd /home/ubuntu/mantu_app/frontend && npm install && npm run build &&
                     sudo rm -rf /var/www/html/* && sudo cp -r dist/* /var/www/html/ && sudo systemctl restart nginx ;
                 fi &&
-
+                
                 if [ -d '/home/ubuntu/mantu_app/backend' ]; then
-                    echo '>> Starting Backend...' && sudo npm install -g pm2 && cd /home/ubuntu/mantu_app/backend &&
+                    echo '>> Starting Backend (FastAPI)...' && sudo npm install -g pm2 && cd /home/ubuntu/mantu_app/backend &&
                     pip3 install -r requirements.txt || true && sudo fuser -k 8000/tcp || true &&
                     pm2 delete neovid-api || true && pm2 start 'python3 -m uvicorn main:app --host 0.0.0.0 --port 8000' --name 'neovid-api' ;
                 fi && echo '>> 🚀 Deployment Successful!'
@@ -259,16 +271,16 @@ app.post('/api/rollback-aws', async (req, res) => {
     try {
         const pemPath = path.join(__dirname, `temp_key_${Date.now()}.pem`);
         await fs.writeFile(pemPath, authKey.replace(/\\n/g, '\n'), { mode: 0o400 });
-
+        
         io.emit('deploy-log', `\n⏪ Initiating Time Machine Rollback for ${targetIp}...`);
-
+        
         const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "
             if [ -d '/home/ubuntu/mantu_app_backup' ]; then
                 echo 'Restoring previous version...' &&
                 rm -rf /home/ubuntu/mantu_app_error &&
                 mv /home/ubuntu/mantu_app /home/ubuntu/mantu_app_error &&
                 mv /home/ubuntu/mantu_app_backup /home/ubuntu/mantu_app &&
-
+                
                 if [ -d '/home/ubuntu/mantu_app/frontend/dist' ]; then
                     sudo rm -rf /var/www/html/* && sudo cp -r /home/ubuntu/mantu_app/frontend/dist/* /var/www/html/ && sudo systemctl restart nginx ;
                 fi &&
@@ -294,26 +306,26 @@ app.post('/api/rollback-aws', async (req, res) => {
 // 🔐 ADVANCE FEATURE 2: DYNAMIC .ENV VAULT
 // ==========================================
 app.post('/api/save-env', async (req, res) => {
-    const { envVars, targetIp, authKey } = req.body; // envVars is an object: { "API_KEY": "123", "DB_PASS": "xyz" }
+    const { envVars, targetIp, authKey } = req.body; 
     try {
         const envString = Object.entries(envVars).map(([k, v]) => `${k}="${v}"`).join('\n');
         const envPath = path.join(__dirname, `temp_env_${Date.now()}`);
         const pemPath = path.join(__dirname, `temp_key_${Date.now()}.pem`);
-
+        
         await fs.writeFile(envPath, envString);
         await fs.writeFile(pemPath, authKey.replace(/\\n/g, '\n'), { mode: 0o400 });
 
         io.emit('deploy-log', `\n🔐 Injecting Secrets into Vault...`);
-
+        
         await execPromise(`scp -o StrictHostKeyChecking=no -i ${pemPath} ${envPath} ubuntu@${targetIp}:/tmp/.env`);
-
+        
         const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "
             cp /tmp/.env /home/ubuntu/mantu_app/backend/.env 2>/dev/null || true &&
             cp /tmp/.env /home/ubuntu/mantu_app/frontend/.env 2>/dev/null || true &&
             pm2 restart neovid-api || true &&
             echo '✅ Secrets Injected and Backend Restarted!'
         "`;
-
+        
         const process = exec(sshCommand);
         process.stdout.on('data', data => io.emit('deploy-log', data.toString()));
         process.on('close', () => {
@@ -333,7 +345,7 @@ app.post('/api/setup-domain', async (req, res) => {
         await fs.writeFile(pemPath, authKey.replace(/\\n/g, '\n'), { mode: 0o400 });
 
         io.emit('deploy-log', `\n🌍 Configuring Domain (${domain}) & SSL Certificate...`);
-
+        
         const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "
             sudo apt-get install -y certbot python3-certbot-nginx &&
             sudo sed -i 's/server_name _;/server_name ${domain} www.${domain};/' /etc/nginx/sites-available/default &&
@@ -341,7 +353,7 @@ app.post('/api/setup-domain', async (req, res) => {
             sudo certbot --nginx -d ${domain} -d www.${domain} --non-interactive --agree-tos -m admin@${domain} &&
             echo '✅ SSL Setup Complete! Your site is now HTTPS Secure.'
         "`;
-
+        
         const process = exec(sshCommand);
         process.stdout.on('data', data => io.emit('deploy-log', data.toString()));
         process.stderr.on('data', data => io.emit('deploy-log', `SSL Alert: ${data.toString()}`));
@@ -356,7 +368,6 @@ app.post('/api/setup-domain', async (req, res) => {
 // ☁️ OTHER ROUTES
 // ==========================================
 app.post('/api/publish-cloud', async (req, res) => {
-    // Kept standard Cloud functionality
     const { files, netlifyToken } = req.body;
     if (!netlifyToken) return res.json({ error: "Missing Token" });
     res.json({ success: true, url: "https://mantu-cloud.netlify.app" });
