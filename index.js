@@ -51,12 +51,10 @@ const parseBase64 = (dataUrl) => {
 // 🤖 THE CASCADING AI ENGINE (AWS -> GROQ -> GEMINI)
 // ==============================================================
 async function safeGenerate(promptText, isJson = true, sendEvent = null, customConfig = {}, attachments = {}) {
-    // 🔐 Keys read entirely from Render Environment Variables for safety
     const groqKey = process.env.GROQ_API_KEY || customConfig.groqKey;
     const geminiKey = process.env.GEMINI_API_KEY || customConfig.geminiKey; 
-    const awsLlmUrl = process.env.AWS_LLM_URL; // e.g. http://your-aws-ip:4000
+    const awsLlmUrl = process.env.AWS_LLM_URL;
 
-    // 🌟 MULTIMODAL LOGIC (Gemini Only)
     if (attachments.image || attachments.voice) {
         if(sendEvent) sendEvent('log', { agent: "Gemini Vision", status: "Computing", details: `Analyzing visual/audio data...` });
         try {
@@ -83,7 +81,6 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null, customC
     let finalPrompt = promptText;
     if (attachments.voiceUrl) finalPrompt += `\n[User referenced this Audio URL: ${attachments.voiceUrl}]`;
 
-    // 🚀 PRIORITY 1: AWS LOCAL LLM 
     if (awsLlmUrl) {
         try {
             if(sendEvent) sendEvent('log', { agent: "AWS Worker", status: "Computing", details: `Connecting to self-hosted AI...` });
@@ -103,7 +100,6 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null, customC
         }
     }
 
-    // ⚡ PRIORITY 2: GROQ CLOUD
     if (groqKey) {
         try {
             if(sendEvent) sendEvent('log', { agent: "GROQ Engine", status: "Computing", details: `Writing code via Groq...` });
@@ -120,7 +116,6 @@ async function safeGenerate(promptText, isJson = true, sendEvent = null, customC
         }
     }
 
-    // 🧠 PRIORITY 3: GEMINI PRO
     try {
         if (!geminiKey) throw new Error("Gemini Key missing in backend .env");
         if(sendEvent) sendEvent('log', { agent: "Gemini Engine", status: "Computing", details: `Writing code via Gemini...` });
@@ -146,9 +141,7 @@ app.post('/api/build', async (req, res) => {
         const { prompt, image, voice, voiceUrl, customSettings } = req.body;
         if (!prompt) throw new Error("Prompt is required");
         
-        // 🔥 LOG ADDED: Ye aapko render dashboard par dikhega jaise hi request aayegi!
         console.log(`\n🚀 [NEW PROJECT REQUEST] -> ${prompt.substring(0, 50)}...`);
-        
         sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Initializing Enterprise Engine..." });
 
         const masterPrompt = `You are an Elite Enterprise CTO. Design the backend and frontend architecture for this idea: "${prompt}". 
@@ -197,7 +190,7 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// 🌩️ DEPLOYMENT APIS (Untouched & Complete)
+// 🌩️ MANTU AI: THE AWS AUTO-DEPLOY ENGINE
 // ==========================================
 app.post('/api/publish-aws', async (req, res) => {
     const { files, targetIp, authKey } = req.body;
@@ -210,25 +203,67 @@ app.post('/api/publish-aws', async (req, res) => {
         const pemName = `key_${timestamp}.pem`;
         const pemPath = path.join(__dirname, pemName);
 
+        // 1. Create a Zip file of the code
         const output = fsSync.createWriteStream(zipPath);
         const archive = archiver('zip', { zlib: { level: 9 } }); 
         archive.pipe(output);
-        for (const [filename, content] of Object.entries(files || {})) archive.append(content, { name: filename });
+        for (const [filename, content] of Object.entries(files || {})) {
+            archive.append(content, { name: filename });
+        }
         await archive.finalize();
         await new Promise(resolve => output.on('close', resolve));
 
+        // 2. Format and save the PEM key
         const formattedKey = authKey.replace(/\\n/g, '\n'); 
         await fs.writeFile(pemPath, formattedKey, { mode: 0o400 });
 
+        console.log(`📦 Uploading Code to AWS (${targetIp})...`);
         const scpCommand = `scp -o StrictHostKeyChecking=no -i ${pemPath} ${zipPath} ubuntu@${targetIp}:/tmp/mantu_app.zip`;
-        const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "mkdir -p ~/mantu_app && unzip -o /tmp/mantu_app.zip -d ~/mantu_app && cd ~/mantu_app && (npm install || true) && (npm run build || true) && (pip3 install -r requirements.txt || true)"`;
-
         await execPromise(scpCommand);
-        const { stdout } = await execPromise(sshCommand);
 
-        fsSync.unlinkSync(zipPath); fsSync.unlinkSync(pemPath);
+        console.log(`⚙️ Executing PM2 Auto-Pilot on AWS...`);
+        // 3. The Master SSH Command (Full Automation)
+        const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ubuntu@${targetIp} "
+            echo 'Extracting Files...' &&
+            mkdir -p /home/ubuntu/mantu_app &&
+            unzip -o /tmp/mantu_app.zip -d /home/ubuntu/mantu_app &&
+
+            echo 'Ensuring PM2 is installed...' &&
+            sudo npm install -g pm2 &&
+
+            echo 'Starting Frontend Auto-Pilot...' &&
+            if [ -d '/home/ubuntu/mantu_app/frontend' ]; then
+                cd /home/ubuntu/mantu_app/frontend &&
+                npm install &&
+                sudo fuser -k 80/tcp || true &&
+                sudo pm2 delete neovid-ui || true &&
+                sudo pm2 start npm --name 'neovid-ui' -- run dev -- --host 0.0.0.0 --port 80 ;
+            fi &&
+
+            echo 'Starting Backend Auto-Pilot...' &&
+            if [ -d '/home/ubuntu/mantu_app/backend' ]; then
+                cd /home/ubuntu/mantu_app/backend &&
+                pip3 install -r requirements.txt || true &&
+                sudo fuser -k 8000/tcp || true &&
+                pm2 delete neovid-api || true &&
+                pm2 start 'python3 -m uvicorn main:app --host 0.0.0.0 --port 8000' --name 'neovid-api' ;
+            fi &&
+
+            echo '✅ Deployment 100% Successful!'
+        "`;
+
+        const { stdout } = await execPromise(sshCommand);
+        console.log("AWS Log:", stdout);
+
+        // Cleanup temporary files
+        fsSync.unlinkSync(zipPath); 
+        fsSync.unlinkSync(pemPath);
+        
         res.json({ success: true, url: `http://${targetIp}`, log: stdout });
-    } catch (error) { res.json({ error: `AWS Deployment Failed. Details: ${error.message}` }); }
+    } catch (error) { 
+        console.error("Deploy Error:", error);
+        res.json({ error: `AWS Deployment Failed. Details: ${error.message}` }); 
+    }
 });
 
 app.post('/api/publish-cloud', async (req, res) => {
