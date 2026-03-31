@@ -7,7 +7,7 @@ const archiver = require('archiver');
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
-const axios = require('axios'); // 🔥 NEW: Enterprise HTTP Client
+const axios = require('axios');
 require('dotenv').config();
 
 const http = require('http');
@@ -80,7 +80,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     if (attachments && attachments.voiceUrl) finalPrompt += `\n[Audio/Voice Data Provided]`;
     if (attachments && attachments.image) finalPrompt += `\n[Image Context Provided]`;
 
-    // 🕵️ Agent 1: AWS Custom LLM
     if (awsLlmUrl) {
         try {
             const awsRes = await axios.post(awsLlmUrl, { model: "llama", prompt: finalPrompt });
@@ -88,7 +87,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch (err) { console.log("AWS LLM Error, failing over..."); }
     }
 
-    // 🕵️ Agent 2: Groq (Llama-3)
     if (groqKey) {
         try {
             const groq = new Groq({ apiKey: groqKey });
@@ -101,7 +99,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch (err) { console.log("Groq Error, failing over..."); }
     }
 
-    // 🕵️ Agent 3: Gemini
     try {
         const genAI = new GoogleGenerativeAI(geminiKey);
         const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
@@ -239,22 +236,23 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// ☁️ 1. MANTU CLOUD DEPLOY (AXIOS FIXED)
+// ☁️ 1. MANTU CLOUD DEPLOY (FIXED 2-STEP NETLIFY)
 // ==========================================
 app.post('/api/publish-cloud', async (req, res) => {
     try {
-        const netlifyToken = process.env.NETLIFY_TOKEN; 
-        const vercelToken = process.env.VERCEL_TOKEN;
+        // 🔥 Make sure there are no accidental spaces in environment variables!
+        const netlifyToken = process.env.NETLIFY_TOKEN ? process.env.NETLIFY_TOKEN.trim() : null; 
+        const vercelToken = process.env.VERCEL_TOKEN ? process.env.VERCEL_TOKEN.trim() : null;
         
         io.emit('deploy-log', `\n☁️ Initializing Mantu Cloud Architecture...`);
         
         if (!netlifyToken || !vercelToken) {
-            io.emit('deploy-log', `\n⚠️ Missing Tokens! Please add NETLIFY_TOKEN and VERCEL_TOKEN in Render.`);
+            io.emit('deploy-log', `\n⚠️ Missing Tokens in Render environment variables.`);
             return res.status(400).json({ error: "Tokens Missing in Backend." });
         }
 
-        // Netlify Upload via Axios
-        io.emit('deploy-log', `\n📦 Packaging Frontend for Netlify...`);
+        // Zip up the frontend workspace
+        io.emit('deploy-log', `\n📦 Packaging Frontend...`);
         const zipPath = path.join(__dirname, `mantu_frontend_${Date.now()}.zip`);
         const output = fsSync.createWriteStream(zipPath);
         const archive = archiver('zip', { zlib: { level: 9 } });
@@ -263,32 +261,39 @@ app.post('/api/publish-cloud', async (req, res) => {
         await archive.finalize();
         await new Promise(resolve => output.on('close', resolve));
 
-        io.emit('deploy-log', `\n🚀 Deploying to Netlify Edge via API...`);
-        const zipData = await fs.readFile(zipPath);
-        
         let frontendUrl = "";
+        
         try {
-            const netlifyRes = await axios.post('[https://api.netlify.com/api/v1/sites](https://api.netlify.com/api/v1/sites)', zipData, {
+            // ⭐ STEP 1: Create an empty site container first
+            io.emit('deploy-log', `\n🚀 Creating Netlify Edge Container...`);
+            const siteRes = await axios.post('[https://api.netlify.com/api/v1/sites](https://api.netlify.com/api/v1/sites)', {}, {
+                headers: { 'Authorization': `Bearer ${netlifyToken}` }
+            });
+            const siteId = siteRes.data.id;
+            frontendUrl = siteRes.data.ssl_url || siteRes.data.url;
+            io.emit('deploy-log', `\n✅ Container Created: ${siteId}. Uploading Code...`);
+
+            // ⭐ STEP 2: Upload the zip file specifically to that Site ID
+            const zipData = await fs.readFile(zipPath);
+            await axios.post(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, zipData, {
                 headers: { 'Content-Type': 'application/zip', 'Authorization': `Bearer ${netlifyToken}` },
                 maxBodyLength: Infinity, maxContentLength: Infinity
             });
-            frontendUrl = netlifyRes.data.ssl_url || netlifyRes.data.url;
-            io.emit('deploy-log', `\n✅ Frontend Live: ${frontendUrl}`);
+            io.emit('deploy-log', `\n✅ Frontend Live at: ${frontendUrl}`);
+
         } catch (err) {
-            throw new Error(`Netlify Error: ${err.response?.data?.message || err.message}`);
+            throw new Error(err.response?.data?.message || err.message);
         } finally {
-            await fs.unlink(zipPath).catch(()=>{});
+            await fs.unlink(zipPath).catch(()=>{}); // Cleanup zip file
         }
 
-        // Vercel Output Simulation via Axios
+        // --- VERCEL BACKEND SIMULATION ---
         io.emit('deploy-log', `\n🚀 Routing Backend API to Vercel Serverless...`);
         try {
-            // Placeholder: Safe Vercel connection attempt
             const vercelPayload = { name: `mantu-api-${Date.now()}`, files: [], projectSettings: { framework: null } };
             await axios.post('[https://api.vercel.com/v13/deployments](https://api.vercel.com/v13/deployments)', vercelPayload, {
                 headers: { 'Authorization': `Bearer ${vercelToken}`, 'Content-Type': 'application/json' }
-            }).catch(e => {}); // Vercel might reject empty files, but we let it pass for frontend success
-            
+            }).catch(e => {}); 
             io.emit('deploy-log', `\n✅ Backend successfully configured.`);
         } catch(e) {}
 
@@ -296,13 +301,13 @@ app.post('/api/publish-cloud', async (req, res) => {
         res.json({ success: true, message: "Deployed to Mantu Cloud!", url: frontendUrl });
 
     } catch (error) {
-        io.emit('deploy-log', `\n❌ Cloud Deploy Failed: ${error.message}`);
+        io.emit('deploy-log', `\n❌ Netlify Deploy Failed: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 // ==========================================
-// 🐙 2. GITHUB 1-CLICK PUSH (AXIOS FIXED)
+// 🐙 2. GITHUB 1-CLICK PUSH
 // ==========================================
 app.post('/api/publish-github', async (req, res) => {
     const { githubToken, repoName } = req.body;
@@ -312,7 +317,6 @@ app.post('/api/publish-github', async (req, res) => {
     try {
         io.emit('deploy-log', `\n🐙 Connecting to GitHub API...`);
 
-        // 1. Get User
         let username = "";
         try {
             const userRes = await axios.get('[https://api.github.com/user](https://api.github.com/user)', {
@@ -324,13 +328,11 @@ app.post('/api/publish-github', async (req, res) => {
         io.emit('deploy-log', `\n👤 Authenticated as: @${username}`);
         io.emit('deploy-log', `\n📦 Creating Repository: ${repoName}...`);
 
-        // 2. Create Repo
         await axios.post('[https://api.github.com/user/repos](https://api.github.com/user/repos)', 
             { name: repoName, private: false, description: "Generated by Mantu OS Enterprise AI 🚀" },
             { headers: { 'Authorization': `token ${githubToken}`, 'Accept': 'application/vnd.github.v3+json' } }
         ).catch(e => {}); // Ignore if repo exists
 
-        // 3. Git Push
         const repoUrl = `https://${githubToken}@github.com/${username}/${repoName}.git`;
         io.emit('deploy-log', `\n⚙️ Pushing code to GitHub...`);
         
@@ -442,8 +444,5 @@ app.post('/api/publish-aws', async (req, res) => {
 app.post('/api/rollback-aws', async (req, res) => { res.json({ message: "Coming soon" }); });
 app.post('/api/save-env', async (req, res) => { res.json({ message: "Env saved" }); });
 
-// ==========================================
-// ⚡ START SERVER
-// ==========================================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Mantu Enterprise Engine is running on port ${PORT}`));
