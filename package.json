@@ -16,10 +16,12 @@
     "@vitejs/plugin-react": "^6.0.1",
     "archiver": "^7.0.1",
     "axios": "^1.14.0",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "groq-sdk": "^1.1.2",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.3.3",
     "socket.io": "^4.8.3"
   },

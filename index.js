@@ -134,6 +134,78 @@ async function autoHealCode(errorLog, customSettings) {
 }
 
 // ==========================================
+// 🔐 AUTHENTICATION ROUTES (LOGIN / SIGNUP)
+// ==========================================
+
+// JWT Secret Key (Isse token banta hai, ise aap .env mein bhi rakh sakte hain)
+const JWT_SECRET = process.env.JWT_SECRET || "mantu_ai_super_secret_key_2026";
+
+// 1. SIGNUP API (Naya Account Banana)
+app.post('/api/signup', async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+
+        // Check agar user pehle se hai
+        let existingUser = await User.findOne({ email });
+        if (existingUser) return res.status(400).json({ error: "User already exists with this email!" });
+
+        // Password ko secure (Hash) karna
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Naya User MongoDB mein Save karna
+        const newUser = await User.create({
+            name,
+            email,
+            password: hashedPassword,
+            credits: 10 // Free 10 credits welcome bonus
+        });
+
+        // Token Generate karna
+        const token = jwt.sign({ id: newUser._id, plan: newUser.plan }, JWT_SECRET, { expiresIn: '7d' });
+
+        res.status(201).json({
+            success: true,
+            message: "Account created successfully! Welcome to Mantu OS.",
+            token,
+            user: { id: newUser._id, name: newUser.name, email: newUser.email, plan: newUser.plan, credits: newUser.credits }
+        });
+    } catch (error) {
+        console.error("Signup Error:", error);
+        res.status(500).json({ error: "Server Error during Signup." });
+    }
+});
+
+// 2. LOGIN API
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // Find user by email
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ error: "User not found! Please sign up." });
+
+        // Check Password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ error: "Invalid Credentials (Wrong Password)." });
+
+        // Token Generate karna
+        const token = jwt.sign({ id: user._id, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
+
+        res.status(200).json({
+            success: true,
+            message: "Logged in successfully!",
+            token,
+            user: { id: user._id, name: user.name, email: user.email, plan: user.plan, credits: user.credits }
+        });
+    } catch (error) {
+        console.error("Login Error:", error);
+        res.status(500).json({ error: "Server Error during Login." });
+    }
+});
+
+
+// ==========================================
 // 🗄️ MONGODB API ROUTES (MERGED)
 // ==========================================
 app.post('/api/save-project', async (req, res) => {
