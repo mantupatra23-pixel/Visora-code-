@@ -15,7 +15,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Groq = require('groq-sdk');
 
 // ==========================================
-// 🔐 AUTH & MONGODB IMPORTS
+// 🔐 AUTH & DATABASE IMPORTS
 // ==========================================
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -27,7 +27,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "100mb" }));
 
-// 🚀 Start Mantu DB
+// 🚀 Connect to Mantu DB (MongoDB)
 connectDB();
 
 const server = http.createServer(app);
@@ -41,7 +41,7 @@ const WORKSPACE_DIR = path.join(__dirname, "mantu_workspace");
 const JWT_SECRET = process.env.JWT_SECRET || "mantu_ai_super_secret_key_2026";
 
 // ==========================================
-// 🧠 HELPER FUNCTIONS (100% RESTORED)
+// 🧠 HELPER FUNCTIONS
 // ==========================================
 const extractJson = (text) => {
     try {
@@ -83,8 +83,8 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const awsLlmUrl = process.env.AWS_LLM_URL;
 
     let finalPrompt = promptText;
-    if (attachments.voiceUrl) finalPrompt += `\n[Audio/Voice Data Provided]`;
-    if (attachments.image) finalPrompt += `\n[Image Context Provided]`;
+    if (attachments && attachments.voiceUrl) finalPrompt += `\n[Audio/Voice Data Provided]`;
+    if (attachments && attachments.image) finalPrompt += `\n[Image Context Provided]`;
 
     // 1. Try AWS Custom LLM First
     if (awsLlmUrl) {
@@ -143,7 +143,7 @@ async function autoHealCode(errorLog, customSettings) {
 }
 
 // ==========================================
-// 🔐 AUTHENTICATION API
+// 🔐 AUTHENTICATION ROUTES (LOGIN / SIGNUP)
 // ==========================================
 app.post('/api/signup', async (req, res) => {
     try {
@@ -182,20 +182,25 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ==========================================
-// 🗄️ PROJECT DATABASE API
+// 🗄️ PROJECT DB ROUTES (WITH CLOUD SYNC)
 // ==========================================
 app.post('/api/save-project', async (req, res) => {
     try {
-        const { title, files } = req.body;
+        const { title, files, userId } = req.body;
         if (!files || Object.keys(files).length === 0) return res.status(400).json({ error: "No files generated to save." });
-        const newProject = await Project.create({ title: title || "New Mantu App", files });
+        
+        // Save project mapped to the specific user
+        const newProject = await Project.create({ userId: userId, title: title || "New Mantu App", files: files });
         res.status(201).json({ success: true, message: "Project securely saved to Mantu DB!", projectId: newProject._id });
-    } catch (error) { res.status(500).json({ error: "Failed to save project." }); }
+    } catch (error) { res.status(500).json({ error: "Failed to save project to cloud." }); }
 });
 
 app.get('/api/get-projects', async (req, res) => {
     try {
-        const projects = await Project.find().sort({ createdAt: -1 }).limit(10);
+        const { userId } = req.query;
+        // Fetch only projects belonging to the logged-in user
+        const query = userId ? { userId: userId } : {}; 
+        const projects = await Project.find(query).sort({ createdAt: -1 }).limit(10);
         res.status(200).json({ success: true, data: projects });
     } catch (error) { res.status(500).json({ error: "Could not fetch projects." }); }
 });
@@ -248,7 +253,7 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// 🚀 AWS DEPLOYMENT API
+// 🚀 AWS DEPLOYMENT API (FULL SSH/SCP)
 // ==========================================
 app.post('/api/publish-aws', async (req, res) => {
     let { targetIp, authKey, customSettings } = req.body;
@@ -316,7 +321,7 @@ app.post('/api/publish-aws', async (req, res) => {
 });
 
 // ==========================================
-// 🛑 PLACEHOLDER ROUTES (FULLY PRESERVED)
+// 🛑 PLACEHOLDER ROUTES (PRESERVED)
 // ==========================================
 app.post('/api/rollback-aws', async (req, res) => { res.json({ message: "Rollback functionality coming soon" }); });
 app.post('/api/save-env', async (req, res) => { res.json({ message: "Env saved" }); });
