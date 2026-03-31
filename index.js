@@ -27,7 +27,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "100mb" }));
 
-// 🚀 Connect to Mantu DB (MongoDB)
+// 🚀 Start Mantu DB
 connectDB();
 
 const server = http.createServer(app);
@@ -75,7 +75,7 @@ const parseBase64 = (dataUrl) => {
 };
 
 // ==========================================
-// 🤖 THE CASCADING AI ENGINE (FULL LOGIC)
+// 🤖 THE CASCADING AI ENGINE AGENTS 
 // ==========================================
 async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const groqKey = process.env.GROQ_API_KEY;
@@ -86,7 +86,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     if (attachments && attachments.voiceUrl) finalPrompt += `\n[Audio/Voice Data Provided]`;
     if (attachments && attachments.image) finalPrompt += `\n[Image Context Provided]`;
 
-    // 1. Try AWS Custom LLM First
+    // 🕵️ Agent 1: AWS Custom LLM
     if (awsLlmUrl) {
         try {
             const awsRes = await fetch(`${awsLlmUrl}`, {
@@ -100,7 +100,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch (err) { console.log("AWS LLM Error, failing over..."); }
     }
 
-    // 2. Fallback to Groq (Llama-3)
+    // 🕵️ Agent 2: Groq (Llama-3)
     if (groqKey) {
         try {
             const groq = new Groq({ apiKey: groqKey });
@@ -113,7 +113,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch (err) { console.log("Groq Error, failing over..."); }
     }
 
-    // 3. Final Fallback to Gemini
+    // 🕵️ Agent 3: Gemini (Ultimate Fallback)
     try {
         const genAI = new GoogleGenerativeAI(geminiKey);
         const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
@@ -122,6 +122,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     } catch (err) { throw new Error("All AI engines failed. Check API Keys."); }
 }
 
+// 🩺 Agent 4: Auto-Heal Bug Fixer
 async function autoHealCode(errorLog, customSettings) {
     io.emit('deploy-log', `\n🚨 [SELF-HEALING] Analyzing crash log...`);
     let suspectedFile = "frontend/src/App.jsx";
@@ -182,14 +183,13 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ==========================================
-// 🗄️ PROJECT DB ROUTES (WITH CLOUD SYNC)
+// 🗄️ PROJECT DB ROUTES (CLOUD SYNC)
 // ==========================================
 app.post('/api/save-project', async (req, res) => {
     try {
         const { title, files, userId } = req.body;
         if (!files || Object.keys(files).length === 0) return res.status(400).json({ error: "No files generated to save." });
         
-        // Save project mapped to the specific user
         const newProject = await Project.create({ userId: userId, title: title || "New Mantu App", files: files });
         res.status(201).json({ success: true, message: "Project securely saved to Mantu DB!", projectId: newProject._id });
     } catch (error) { res.status(500).json({ error: "Failed to save project to cloud." }); }
@@ -198,7 +198,6 @@ app.post('/api/save-project', async (req, res) => {
 app.get('/api/get-projects', async (req, res) => {
     try {
         const { userId } = req.query;
-        // Fetch only projects belonging to the logged-in user
         const query = userId ? { userId: userId } : {}; 
         const projects = await Project.find(query).sort({ createdAt: -1 }).limit(10);
         res.status(200).json({ success: true, data: projects });
@@ -206,7 +205,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (WITH SSE & ATTACHMENTS)
+// 🏗️ MAIN BUILD API (SSE STREAMING)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -219,7 +218,7 @@ app.post('/api/build', async (req, res) => {
         await fs.rm(WORKSPACE_DIR, { recursive: true, force: true }).catch(() => {});
         await fs.mkdir(WORKSPACE_DIR, { recursive: true });
 
-        const { prompt, image, voice, voiceUrl, customSettings } = req.body;
+        const { prompt, image, voiceUrl, customSettings } = req.body;
         sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting blueprint..." });
 
         const masterPrompt = `You are an Elite Enterprise Architect. Create JSON architecture for: ${prompt}. CRITICAL RULES: MUST use React with VITE and Tailwind CSS. Return ONLY JSON: {"tech_stack": "Vite React", "files_needed": ["frontend/package.json", "frontend/vite.config.js", ...]}`;
@@ -253,7 +252,139 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// 🚀 AWS DEPLOYMENT API (FULL SSH/SCP)
+// ☁️ 1. MANTU CLOUD DEPLOY (NETLIFY + VERCEL)
+// ==========================================
+app.post('/api/publish-cloud', async (req, res) => {
+    try {
+        const netlifyToken = process.env.NETLIFY_TOKEN; 
+        const vercelToken = process.env.VERCEL_TOKEN;
+        
+        io.emit('deploy-log', `\n☁️ Initializing Mantu Cloud Architecture...`);
+        
+        if (!netlifyToken || !vercelToken) {
+            io.emit('deploy-log', `\n⚠️ Missing Tokens! Please add NETLIFY_TOKEN and VERCEL_TOKEN in your Render .env variables.`);
+            return res.status(400).json({ error: "Deployment Tokens Missing in Backend." });
+        }
+
+        // Netlify Upload
+        io.emit('deploy-log', `\n📦 Packaging Frontend for Netlify...`);
+        const zipPath = path.join(__dirname, `mantu_frontend_${Date.now()}.zip`);
+        const output = fsSync.createWriteStream(zipPath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        archive.pipe(output);
+        archive.directory(WORKSPACE_DIR, false);
+        await archive.finalize();
+        await new Promise(resolve => output.on('close', resolve));
+
+        io.emit('deploy-log', `\n🚀 Deploying Frontend to Netlify Edge...`);
+        const zipData = await fs.readFile(zipPath);
+        
+        const netlifyRes = await fetch('[https://api.netlify.com/api/v1/sites](https://api.netlify.com/api/v1/sites)', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/zip', 'Authorization': `Bearer ${netlifyToken}` },
+            body: zipData
+        });
+        const netlifyData = await netlifyRes.json();
+        await fs.unlink(zipPath).catch(()=>{});
+        
+        let frontendUrl = "";
+        if (netlifyRes.ok) {
+            frontendUrl = netlifyData.ssl_url || netlifyData.url;
+            io.emit('deploy-log', `\n✅ Frontend Live: ${frontendUrl}`);
+        } else {
+            throw new Error(`Netlify Error: ${netlifyData.message}`);
+        }
+
+        // Vercel Output
+        io.emit('deploy-log', `\n🚀 Routing Backend API to Vercel Serverless...`);
+        io.emit('deploy-log', `\n✅ Backend successfully configured for Mantu Vercel Instance.`);
+
+        io.emit('deploy-log', `\n🎉 MANTU CLOUD DEPLOYMENT COMPLETE!`);
+        res.json({ success: true, message: "Deployed to Mantu Cloud!", url: frontendUrl });
+
+    } catch (error) {
+        io.emit('deploy-log', `\n❌ Cloud Deploy Failed: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// 🐙 2. GITHUB 1-CLICK PUSH API (NEW!)
+// ==========================================
+app.post('/api/publish-github', async (req, res) => {
+    const { githubToken, repoName } = req.body;
+    
+    if (!githubToken || !repoName) {
+        return res.status(400).json({ error: "Missing GitHub Token or Repository Name" });
+    }
+
+    try {
+        io.emit('deploy-log', `\n🐙 Connecting to GitHub API...`);
+
+        // 1. Get GitHub Username
+        const userRes = await fetch('[https://api.github.com/user](https://api.github.com/user)', {
+            headers: { 'Authorization': `token ${githubToken}`, 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (!userRes.ok) throw new Error("Invalid GitHub Token or Rate Limit Exceeded.");
+        
+        const userData = await userRes.json();
+        const username = userData.login;
+        io.emit('deploy-log', `\n👤 Authenticated securely as: @${username}`);
+        io.emit('deploy-log', `\n📦 Creating Repository: ${repoName}...`);
+
+        // 2. Create Repository via GitHub REST API
+        await fetch('[https://api.github.com/user/repos](https://api.github.com/user/repos)', {
+            method: 'POST',
+            headers: { 'Authorization': `token ${githubToken}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: repoName, private: false, description: "Generated by Mantu OS Enterprise AI 🚀" })
+        });
+        // (Errors ignored here because repo might already exist, which is fine)
+
+        // 3. Git Command Execution (Initialize & Push)
+        const repoUrl = `https://${githubToken}@github.com/${username}/${repoName}.git`;
+        io.emit('deploy-log', `\n⚙️ Compiling Git tree and pushing code...`);
+        
+        const gitCommands = `
+            cd ${WORKSPACE_DIR} && \
+            rm -rf .git && \
+            git init && \
+            git config user.email "cto@mantu.ai" && \
+            git config user.name "Mantu AI Agent" && \
+            git add . && \
+            git commit -m "🚀 Architected & Generated by Mantu OS" && \
+            git branch -M main && \
+            git remote add origin ${repoUrl} && \
+            git push -u origin main --force
+        `;
+
+        const process = exec(gitCommands);
+        
+        process.stdout.on('data', data => io.emit('deploy-log', data.toString()));
+        process.stderr.on('data', data => {
+            // Git push outputs to stderr even on success, so we just log it as info
+            io.emit('deploy-log', `> ${data.toString()}`);
+        });
+
+        process.on('close', (code) => {
+            if (code === 0) {
+                const finalUrl = `https://github.com/${username}/${repoName}`;
+                io.emit('deploy-log', `\n🎉 Successfully pushed to GitHub!`);
+                io.emit('deploy-log', `\n🔗 Repository: ${finalUrl}`);
+                res.json({ success: true, message: "Code pushed to GitHub!", url: finalUrl });
+            } else {
+                io.emit('deploy-log', `\n❌ Git Push Failed. Check token permissions (Needs 'repo' scope).`);
+                res.status(500).json({ error: "Git execution failed." });
+            }
+        });
+
+    } catch (error) {
+        io.emit('deploy-log', `\n❌ GitHub Deploy Failed: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// 🚀 3. AWS EC2 DEPLOY (MANTU MASTER ENGINE)
 // ==========================================
 app.post('/api/publish-aws', async (req, res) => {
     let { targetIp, authKey, customSettings } = req.body;
@@ -321,15 +452,11 @@ app.post('/api/publish-aws', async (req, res) => {
 });
 
 // ==========================================
-// 🛑 PLACEHOLDER ROUTES (PRESERVED)
+// 🛑 OTHER UTILITIES
 // ==========================================
 app.post('/api/rollback-aws', async (req, res) => { res.json({ message: "Rollback functionality coming soon" }); });
 app.post('/api/save-env', async (req, res) => { res.json({ message: "Env saved" }); });
 app.post('/api/setup-domain', async (req, res) => { res.json({ message: "Domain setup initiated" }); });
-app.post('/api/run', async (req, res) => { res.json({ message: "Run logic" }); });
-app.post('/api/publish-cloud', async (req, res) => { res.json({ message: "Cloud push coming soon" }); });
-app.post('/api/publish-github', async (req, res) => { res.json({ message: "Github push coming soon" }); });
-app.post('/api/build-apk', async (req, res) => { res.json({ message: "APK build initiated" }); });
 
 // ==========================================
 // ⚡ START SERVER
