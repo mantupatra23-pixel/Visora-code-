@@ -240,7 +240,8 @@ app.post('/api/build', async (req, res) => {
 // ==========================================
 app.post('/api/publish-cloud', async (req, res) => {
     try {
-        const netlifyToken = process.env.NETLIFY_TOKEN ? process.env.NETLIFY_TOKEN.trim() : null; 
+        // 🔥 AGGRESSIVE TOKEN CLEANING TO FIX "INVALID URL"
+        const netlifyToken = process.env.NETLIFY_TOKEN ? process.env.NETLIFY_TOKEN.replace(/[\r\n"' ]/g, '') : null; 
         
         io.emit('deploy-log', `\n☁️ Initializing Mantu Cloud Architecture...`);
         
@@ -254,8 +255,6 @@ app.post('/api/publish-cloud', async (req, res) => {
         const output = fsSync.createWriteStream(zipPath);
         const archive = archiver('zip', { zlib: { level: 9 } });
         archive.pipe(output);
-        
-        // 🔥 ORIGINAL: Pushing actual React structure (package.json, src/, etc.)
         archive.directory(WORKSPACE_DIR, false);
         await archive.finalize();
         await new Promise(resolve => output.on('close', resolve));
@@ -263,23 +262,23 @@ app.post('/api/publish-cloud', async (req, res) => {
         let frontendUrl = "";
         
         try {
-            io.emit('deploy-log', `\n🚀 Creating Netlify Edge Container...`);
-            const siteRes = await axios.post('[https://api.netlify.com/api/v1/sites](https://api.netlify.com/api/v1/sites)', {}, {
-                headers: { 'Authorization': `Bearer ${netlifyToken}` }
-            });
-            const siteId = siteRes.data.id;
-            frontendUrl = siteRes.data.ssl_url || siteRes.data.url;
-            io.emit('deploy-log', `\n✅ Container Created: ${siteId}. Uploading NPM Code...`);
+            io.emit('deploy-log', `\n🚀 Deploying to Netlify Edge via Native cURL Engine...`);
+            
+            // Using cURL completely bypasses Node.js HTTP Parsing bugs for zip files
+            const netlifyCmd = `curl -s -X POST -H "Content-Type: application/zip" -H "Authorization: Bearer ${netlifyToken}" --data-binary "@${zipPath}" https://api.netlify.com/api/v1/sites`;
+            
+            const { stdout } = await execPromise(netlifyCmd);
+            const netlifyData = JSON.parse(stdout);
 
-            const zipData = await fs.readFile(zipPath);
-            await axios.post(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, zipData, {
-                headers: { 'Content-Type': 'application/zip', 'Authorization': `Bearer ${netlifyToken}` },
-                maxBodyLength: Infinity, maxContentLength: Infinity
-            });
-            io.emit('deploy-log', `\n✅ NPM Workspace Uploaded to: ${frontendUrl}`);
+            if (netlifyData.url) {
+                frontendUrl = netlifyData.ssl_url || netlifyData.url;
+                io.emit('deploy-log', `\n✅ NPM Workspace Uploaded to: ${frontendUrl}`);
+            } else {
+                throw new Error(netlifyData.message || "Failed to deploy to Netlify");
+            }
 
         } catch (err) {
-            throw new Error(err.response?.data?.message || err.message);
+            throw new Error(err.message);
         } finally {
             await fs.unlink(zipPath).catch(()=>{}); 
         }
