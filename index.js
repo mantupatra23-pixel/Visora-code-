@@ -51,10 +51,7 @@ const extractJson = (text) => {
         if (start !== -1 && end !== -1) return JSON.parse(cleanText.substring(start, end + 1));
         return JSON.parse(cleanText);
     } catch (e) { 
-        return { 
-            tech_stack: "React + Vite", 
-            files_needed: ["package.json", "vite.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"] 
-        }; 
+        return { tech_stack: "React + Vite", files_needed: ["package.json", "vite.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"] }; 
     }
 };
 
@@ -107,7 +104,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
             const groq = new Groq({ apiKey: groqKey });
             const groqRes = await groq.chat.completions.create({
                 messages: [
-                    { role: "system", content: "You are an Elite React Developer. Write production-ready, complete code without placeholders." }, 
+                    { role: "system", content: "You are an Elite React Developer. Write production-ready, complete code without placeholders. Keep all code purely frontend React." }, 
                     { role: "user", content: finalPrompt }
                 ],
                 model: "llama-3.3-70b-versatile",
@@ -122,7 +119,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }); 
         const res = await geminiModel.generateContent(finalPrompt);
         return { text: res.response.text(), engine: "Gemini" };
-    } catch (err) { throw new Error(`All AI Engines Failed. Please try again.`); }
+    } catch (err) { throw new Error(`All AI Engines Failed.`); }
 }
 
 // ==========================================
@@ -170,7 +167,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (PURE REACT FOCUS)
+// 🏗️ MAIN BUILD API
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -187,13 +184,12 @@ app.post('/api/build', async (req, res) => {
         const { prompt, image, voiceUrl } = req.body;
         sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting React + Tailwind UI..." });
 
-        // 🔥 THE FLAWLESS REACT PROMPT
         const masterPrompt = `Design a complete, production-ready REACT application for: "${prompt}".
         CRITICAL RULES:
         1. Use React + Vite + Tailwind CSS.
-        2. DO NOT GENERATE ANY BACKEND CODE (No Python, No Node.js backend). Keep it 100% Frontend.
-        3. Break the UI into reusable components inside 'src/components/'.
-        Return ONLY a JSON object: {"tech_stack": "React + Vite", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "postcss.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/YourComponent1.jsx"]}`;
+        2. DO NOT GENERATE ANY BACKEND CODE. Keep it 100% Frontend.
+        3. Break UI into components inside 'src/components/'.
+        Return ONLY a JSON object: {"tech_stack": "React + Vite", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "postcss.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/YourComponent.jsx"]}`;
         
         let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
         const architecture = extractJson(masterData.text);
@@ -208,9 +204,9 @@ app.post('/api/build', async (req, res) => {
              await Promise.all(chunk.map(async (filename) => {
                  try {
                      sendEvent('log', { agent: "Developer", status: "Coding", details: `Writing ${filename}...` });
-                     const workerPrompt = `Write the COMPLETE, production-ready code for '${filename}' for this React app: "${prompt}". 
-                     DO NOT write placeholders like '// Add logic here'. 
-                     If it's package.json, include react, react-dom, tailwindcss, lucide-react.
+                     const workerPrompt = `Write the COMPLETE code for '${filename}' for this React app: "${prompt}". 
+                     DO NOT write placeholders. 
+                     If it's package.json, include react, react-dom, tailwindcss, lucide-react, react-router-dom.
                      Return ONLY raw code without Markdown blocks.`;
                      
                      const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
@@ -235,7 +231,7 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// ☁️ CLOUD DEPLOY (NETLIFY HTML FIX)
+// ☁️ CLOUD DEPLOY 
 // ==========================================
 app.post('/api/publish-cloud', async (req, res) => {
     try {
