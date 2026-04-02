@@ -57,7 +57,10 @@ const extractJson = (text) => {
 
 const cleanRawCode = (text) => {
     if (!text) return "// Output generation failed.";
-    let clean = text.replace(/```(javascript|js|jsx|python|py|html|css|json|bash|sh)?\n/gi, "");
+    let clean = text;
+    const match = clean.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+    if (match && match[1]) return match[1].trim();
+    clean = clean.replace(/```[a-zA-Z]*\n?/g, "");
     clean = clean.replace(/```/g, "");
     return clean.trim();
 };
@@ -70,58 +73,57 @@ const parseBase64 = (dataUrl) => {
 };
 
 // ==========================================
-// 🤖 THE CASCADING AI ENGINE
+// 🤖 THE STRICT AI SEQUENCE (1. AWS -> 2. GROQ -> 3. GEMINI)
 // ==========================================
 async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const groqKey = process.env.GROQ_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
     const awsLlmUrl = process.env.AWS_LLM_URL;
 
-    const systemPrompt = "You are an Elite Frontend Developer. You write crash-free, beautiful React + Tailwind code.";
+    const systemPrompt = "You are an Elite Frontend Developer. Write complete, production-ready React + Tailwind code. NEVER leave placeholders like '// logic here'.";
 
+    // 📸 VISION OVERRIDE (For Images Only)
     if (attachments && attachments.image) {
         try {
             if(!geminiKey) throw new Error("Gemini Key required");
             const genAI = new GoogleGenerativeAI(geminiKey);
             const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: systemPrompt });
             const parsed = parseBase64(attachments.image);
-            let promptParts = [promptText];
-            if(parsed) promptParts.push({ inlineData: { data: parsed.data, mimeType: parsed.mimeType }});
-            const res = await geminiModel.generateContent(promptParts);
+            const res = await geminiModel.generateContent([promptText, { inlineData: { data: parsed.data, mimeType: parsed.mimeType } }]);
             return { text: res.response.text(), engine: "Gemini Vision" };
-        } catch(e) { throw new Error("Image Vision failed"); }
+        } catch(e) { console.log("Vision Failed."); }
     }
 
-    let finalPrompt = promptText;
-    
+    // 🏆 SEQUENCE 1: AWS (Given 25 Seconds to think)
     if (awsLlmUrl) {
         try {
-            const awsRes = await axios.post(awsLlmUrl, { model: "llama", prompt: finalPrompt }, { timeout: 8000 });
-            if (awsRes.data?.choices?.[0]) return { text: awsRes.data.choices[0].message.content, engine: "AWS_LLM" };
-        } catch (err) {}
+            const awsRes = await axios.post(awsLlmUrl, { model: "llama", prompt: promptText }, { timeout: 25000 });
+            if (awsRes.data?.choices?.[0]?.message?.content) {
+                return { text: awsRes.data.choices[0].message.content, engine: "AWS_LLM" };
+            }
+        } catch (err) { console.log("⚠️ AWS Server Timeout or Offline. Falling back to Groq..."); }
     }
 
+    // 🥈 SEQUENCE 2: GROQ
     if (groqKey) {
         try {
             const groq = new Groq({ apiKey: groqKey });
             const groqRes = await groq.chat.completions.create({
-                messages: [
-                    { role: "system", content: systemPrompt }, 
-                    { role: "user", content: finalPrompt }
-                ],
+                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: promptText }],
                 model: "llama-3.3-70b-versatile",
                 temperature: 0.1
             });
             return { text: groqRes.choices[0].message.content, engine: "Groq" };
-        } catch (err) {}
+        } catch (err) { console.log("⚠️ Groq Failed. Falling back to Gemini..."); }
     }
 
+    // 🥉 SEQUENCE 3: GEMINI
     try {
         const genAI = new GoogleGenerativeAI(geminiKey);
         const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: systemPrompt }); 
-        const res = await geminiModel.generateContent(finalPrompt);
+        const res = await geminiModel.generateContent(promptText);
         return { text: res.response.text(), engine: "Gemini" };
-    } catch (err) { throw new Error(`All AI Engines Failed.`); }
+    } catch (err) { throw new Error(`All 3 AI Engines (AWS, Groq, Gemini) Failed.`); }
 }
 
 // ==========================================
@@ -133,7 +135,7 @@ app.post('/api/save-project', async (req, res) => { /* Code intact */ res.json({
 app.get('/api/get-projects', async (req, res) => { /* Code intact */ res.json({success: true, data: []}); });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (CRASH-FREE MOCK DATA INJECTION)
+// 🏗️ MAIN BUILD API
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -156,8 +158,8 @@ app.post('/api/build', async (req, res) => {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing UI Overhaul..." });
             filesToGenerate = Object.keys(existingFiles);
         } else {
-            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting Premium React Blueprint..." });
-            const masterPrompt = `Design a complete, highly-styled, modern REACT application for: "${prompt}".
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting React Blueprint via Target Engine..." });
+            const masterPrompt = `Design a complete, modern REACT application for: "${prompt}".
             CRITICAL RULES:
             1. Use React + Vite + Tailwind CSS.
             2. Break UI into logical components inside 'src/components/'.
@@ -176,20 +178,15 @@ app.post('/api/build', async (req, res) => {
              const chunk = filesToGenerate.slice(i, i + concurrencyLimit);
              await Promise.all(chunk.map(async (filename) => {
                  try {
-                     sendEvent('log', { agent: "Developer", status: "Coding", details: `Styling ${filename}...` });
+                     sendEvent('log', { agent: "Developer", status: "Coding", details: `Generating ${filename}...` });
                      
-                     // 🔥 CRITICAL FIX: FORCING MOCK DATA & DEFAULT ARRAYS
                      const workerPrompt = `Write the COMPLETE code for '${filename}' for this React app: "${prompt}". 
-                     
-                     Files available in this project: [ ${filesToGenerate.join(', ')} ]
-                     
-                     💎 PREMIUM DESIGN & CRASH-PREVENTION RULES (MUST FOLLOW):
-                     1. PREVENT .map() CRASHES: ALWAYS use default empty arrays for props (e.g., \`export default function ProductGrid({ products = [] }) { ... }\`).
-                     2. USE MOCK DATA: Since there is no backend, ALWAYS include beautiful, realistic mock data directly inside the component (use real image URLs from Unsplash, real descriptions, prices, etc.).
-                     3. UI/UX DESIGN: Use modern Tailwind CSS grids (grid-cols-1 md:grid-cols-3), hover effects (hover:-translate-y-1 hover:shadow-xl), rounded borders (rounded-2xl), and clean spacing (p-6, gap-6).
-                     4. NEVER wrap your components in <BrowserRouter> or <Router>. Just build the UI.
-                     
-                     Return ONLY raw code without Markdown blocks. DO NOT write placeholders.`;
+                     Files available: [ ${filesToGenerate.join(', ')} ]
+                     CRITICAL RULES:
+                     1. DO NOT use map() without default empty arrays (e.g. products = []).
+                     2. Include mock data (real images, descriptions).
+                     3. Do NOT wrap components in <Router> or <BrowserRouter>.
+                     Return ONLY raw code without Markdown.`;
                      
                      const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                      const cleanCode = cleanRawCode(codeData.text);
@@ -199,7 +196,7 @@ app.post('/api/build', async (req, res) => {
                      catch (mkdirErr) { if (mkdirErr.code !== 'EEXIST') throw mkdirErr; }
                      
                      await fs.writeFile(absoluteFilePath, cleanCode);
-                     sendEvent('file', { filename: filename, code: cleanCode });
+                     sendEvent('file', { filename: filename, code: cleanCode, engine: codeData.engine });
                  } catch(err) { console.error(`Error on ${filename}:`, err); }
              }));
         }
@@ -213,10 +210,10 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// ☁️ CLOUD DEPLOY & GITHUB
+// ☁️ DEPLOYS 
 // ==========================================
 app.post('/api/publish-cloud', async (req, res) => { /* Code intact */ res.json({success: true, url: "[https://netlify.com](https://netlify.com)"}); });
 app.post('/api/publish-github', async (req, res) => { /* Code intact */ res.json({success: true, url: "[https://github.com](https://github.com)"}); });
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`🚀 Mantu React Engine is running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Mantu Enterprise Engine is running on port ${PORT}`));
