@@ -104,7 +104,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
             const groq = new Groq({ apiKey: groqKey });
             const groqRes = await groq.chat.completions.create({
                 messages: [
-                    { role: "system", content: "You are an Elite React Developer. Write production-ready, complete code without placeholders. Keep all code purely frontend React." }, 
+                    { role: "system", content: "You are an Elite React Developer. Write production-ready, complete code without placeholders." }, 
                     { role: "user", content: finalPrompt }
                 ],
                 model: "llama-3.3-70b-versatile",
@@ -119,7 +119,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" }); 
         const res = await geminiModel.generateContent(finalPrompt);
         return { text: res.response.text(), engine: "Gemini" };
-    } catch (err) { throw new Error(`All AI Engines Failed.`); }
+    } catch (err) { throw new Error(`All AI Engines Failed. Please try again.`); }
 }
 
 // ==========================================
@@ -167,7 +167,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API
+// 🏗️ MAIN BUILD API (SMART CONTEXT INJECTOR)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -181,22 +181,30 @@ app.post('/api/build', async (req, res) => {
         await fs.rm(WORKSPACE_DIR, { recursive: true, force: true }).catch(() => {});
         await fs.mkdir(WORKSPACE_DIR, { recursive: true });
 
-        const { prompt, image, voiceUrl } = req.body;
-        sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting React + Tailwind UI..." });
+        const { prompt, image, voiceUrl, existingFiles } = req.body;
+        const isFollowUp = Object.keys(existingFiles || {}).length > 0;
+        
+        let filesToGenerate = [];
 
-        const masterPrompt = `Design a complete, production-ready REACT application for: "${prompt}".
-        CRITICAL RULES:
-        1. Use React + Vite + Tailwind CSS.
-        2. DO NOT GENERATE ANY BACKEND CODE. Keep it 100% Frontend.
-        3. Break UI into components inside 'src/components/'.
-        Return ONLY a JSON object: {"tech_stack": "React + Vite", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "postcss.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/YourComponent.jsx"]}`;
-        
-        let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
-        const architecture = extractJson(masterData.text);
-        let filesToGenerate = architecture.files_needed || [];
-        
-        const essentialFiles = ["src/App.jsx", "src/index.css", "package.json"];
-        essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
+        if (isFollowUp) {
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing Contextual Updates..." });
+            filesToGenerate = Object.keys(existingFiles);
+        } else {
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting React Blueprint..." });
+            const masterPrompt = `Design a complete, production-ready REACT application for: "${prompt}".
+            CRITICAL RULES:
+            1. Use React + Vite + Tailwind CSS.
+            2. DO NOT GENERATE ANY BACKEND CODE.
+            3. Break UI into components inside 'src/components/'.
+            Return ONLY a JSON object: {"tech_stack": "React + Vite", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/YourComponent.jsx"]}`;
+            
+            let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
+            const architecture = extractJson(masterData.text);
+            filesToGenerate = architecture.files_needed || [];
+            
+            const essentialFiles = ["src/App.jsx", "src/index.css", "package.json"];
+            essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
+        }
 
         const concurrencyLimit = 2; 
         for (let i = 0; i < filesToGenerate.length; i += concurrencyLimit) {
@@ -204,10 +212,17 @@ app.post('/api/build', async (req, res) => {
              await Promise.all(chunk.map(async (filename) => {
                  try {
                      sendEvent('log', { agent: "Developer", status: "Coding", details: `Writing ${filename}...` });
+                     
+                     // 🔥 CRITICAL FIX: Telling AI exactly what files exist to prevent Hallucinations
                      const workerPrompt = `Write the COMPLETE code for '${filename}' for this React app: "${prompt}". 
-                     DO NOT write placeholders. 
-                     If it's package.json, include react, react-dom, tailwindcss, lucide-react, react-router-dom.
-                     Return ONLY raw code without Markdown blocks.`;
+                     
+                     CRITICAL PROJECT CONTEXT:
+                     The ONLY files available in this project are: [ ${filesToGenerate.join(', ')} ]
+                     
+                     RULES TO PREVENT CRASHES:
+                     1. NEVER import or use a component that is not in the list above. (e.g. If the list has Header.jsx, DO NOT use <Navbar />).
+                     2. Make sure component names match exactly with their file names.
+                     3. Return ONLY raw code without Markdown blocks. DO NOT write placeholders.`;
                      
                      const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                      const cleanCode = cleanRawCode(codeData.text);
@@ -259,7 +274,7 @@ app.post('/api/publish-cloud', async (req, res) => {
 });
 
 // ==========================================
-// 🐙 GITHUB GITOPS DEPLOY 
+// 🐙 GITHUB GITOPS DEPLOY
 // ==========================================
 app.post('/api/publish-github', async (req, res) => {
     const { githubToken, repoName } = req.body;
