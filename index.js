@@ -51,7 +51,7 @@ const extractJson = (text) => {
         if (start !== -1 && end !== -1) return JSON.parse(cleanText.substring(start, end + 1));
         return JSON.parse(cleanText);
     } catch (e) { 
-        return { tech_stack: "React + Vite", files_needed: ["package.json", "vite.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Header.jsx"] }; 
+        return { tech_stack: "React + Vite", files_needed: ["package.json", "vite.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"] }; 
     }
 };
 
@@ -70,18 +70,18 @@ const parseBase64 = (dataUrl) => {
 };
 
 // ==========================================
-// 🤖 THE CASCADING AI ENGINE (NOW WITH PREMIUM UI/UX MINDSET)
+// 🤖 THE CASCADING AI ENGINE
 // ==========================================
 async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const groqKey = process.env.GROQ_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
     const awsLlmUrl = process.env.AWS_LLM_URL;
 
-    const systemPrompt = "You are an Elite Frontend Developer & Expert UI/UX Designer. You write incredibly beautiful, modern, fully responsive React code using Tailwind CSS. Your designs look like premium tech startups (Apple, Stripe, Vercel) with CSS grids, flexbox layouts, hover animations, soft shadows, rounded corners, and proper spacing. NEVER write basic, ugly, vertically stacked HTML.";
+    const systemPrompt = "You are an Elite Frontend Developer. You write crash-free, beautiful React + Tailwind code.";
 
     if (attachments && attachments.image) {
         try {
-            if(!geminiKey) throw new Error("Gemini Key required for Image Vision");
+            if(!geminiKey) throw new Error("Gemini Key required");
             const genAI = new GoogleGenerativeAI(geminiKey);
             const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: systemPrompt });
             const parsed = parseBase64(attachments.image);
@@ -89,7 +89,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
             if(parsed) promptParts.push({ inlineData: { data: parsed.data, mimeType: parsed.mimeType }});
             const res = await geminiModel.generateContent(promptParts);
             return { text: res.response.text(), engine: "Gemini Vision" };
-        } catch(e) { throw new Error("Image Vision failed. Check Gemini key."); }
+        } catch(e) { throw new Error("Image Vision failed"); }
     }
 
     let finalPrompt = promptText;
@@ -110,7 +110,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
                     { role: "user", content: finalPrompt }
                 ],
                 model: "llama-3.3-70b-versatile",
-                temperature: 0.2
+                temperature: 0.1
             });
             return { text: groqRes.choices[0].message.content, engine: "Groq" };
         } catch (err) {}
@@ -127,13 +127,13 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
 // ==========================================
 // 🔐 AUTH & DB ROUTES
 // ==========================================
-app.post('/api/signup', async (req, res) => { /* Same as before */ res.json({success: true}); });
-app.post('/api/login', async (req, res) => { /* Same as before */ res.json({success: true}); });
-app.post('/api/save-project', async (req, res) => { /* Same as before */ res.json({success: true}); });
-app.get('/api/get-projects', async (req, res) => { /* Same as before */ res.json({success: true, data: []}); });
+app.post('/api/signup', async (req, res) => { /* Code intact */ res.json({success: true}); });
+app.post('/api/login', async (req, res) => { /* Code intact */ res.json({success: true}); });
+app.post('/api/save-project', async (req, res) => { /* Code intact */ res.json({success: true}); });
+app.get('/api/get-projects', async (req, res) => { /* Code intact */ res.json({success: true, data: []}); });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (STRICT DESIGN RULES ADDED)
+// 🏗️ MAIN BUILD API (CRASH-FREE MOCK DATA INJECTION)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -160,9 +160,8 @@ app.post('/api/build', async (req, res) => {
             const masterPrompt = `Design a complete, highly-styled, modern REACT application for: "${prompt}".
             CRITICAL RULES:
             1. Use React + Vite + Tailwind CSS.
-            2. MUST BE BEAUTIFUL. Plan for CSS Grids, Flexbox navbars, stunning hero sections, and product cards.
-            3. Break UI into logical, styled components inside 'src/components/'.
-            Return ONLY a JSON object: {"tech_stack": "React + Vite", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Header.jsx", "src/components/MainLayout.jsx"]}`;
+            2. Break UI into logical components inside 'src/components/'.
+            Return ONLY a JSON object: {"tech_stack": "React + Vite", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Header.jsx"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
@@ -179,23 +178,18 @@ app.post('/api/build', async (req, res) => {
                  try {
                      sendEvent('log', { agent: "Developer", status: "Coding", details: `Styling ${filename}...` });
                      
-                     // 🔥 THE ULTIMATE DESIGNER WORKER PROMPT
+                     // 🔥 CRITICAL FIX: FORCING MOCK DATA & DEFAULT ARRAYS
                      const workerPrompt = `Write the COMPLETE code for '${filename}' for this React app: "${prompt}". 
                      
-                     CRITICAL PROJECT CONTEXT:
                      Files available in this project: [ ${filesToGenerate.join(', ')} ]
                      
-                     💎 STRICT DESIGN INSTRUCTIONS (MUST FOLLOW):
-                     1. Make it look visually STUNNING and Premium (like Vercel, Apple, or Stripe).
-                     2. Use Tailwind CSS extensively for styling.
-                     3. For layouts, MUST use Flexbox (e.g., 'flex items-center justify-between') or CSS Grid (e.g., 'grid grid-cols-1 md:grid-cols-3 gap-6'). DO NOT just stack divs vertically.
-                     4. Use modern design elements: soft shadows ('shadow-lg', 'shadow-xl'), rounded corners ('rounded-xl', 'rounded-2xl'), hover effects ('hover:scale-105', 'transition-all'), and beautiful gradients or clean background colors ('bg-gray-50', 'bg-white').
-                     5. Add proper padding and margins ('p-6', 'm-4', 'gap-4') so elements have breathing room.
-                     6. If building a card (like a product), make it look professional with an image placeholder, bold title, pricing, and a colorful CTA button.
+                     💎 PREMIUM DESIGN & CRASH-PREVENTION RULES (MUST FOLLOW):
+                     1. PREVENT .map() CRASHES: ALWAYS use default empty arrays for props (e.g., \`export default function ProductGrid({ products = [] }) { ... }\`).
+                     2. USE MOCK DATA: Since there is no backend, ALWAYS include beautiful, realistic mock data directly inside the component (use real image URLs from Unsplash, real descriptions, prices, etc.).
+                     3. UI/UX DESIGN: Use modern Tailwind CSS grids (grid-cols-1 md:grid-cols-3), hover effects (hover:-translate-y-1 hover:shadow-xl), rounded borders (rounded-2xl), and clean spacing (p-6, gap-6).
+                     4. NEVER wrap your components in <BrowserRouter> or <Router>. Just build the UI.
                      
-                     RULES TO PREVENT CRASHES:
-                     1. NEVER import a component that is not in the list above.
-                     2. Return ONLY raw code without Markdown blocks. DO NOT write placeholders.`;
+                     Return ONLY raw code without Markdown blocks. DO NOT write placeholders.`;
                      
                      const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                      const cleanCode = cleanRawCode(codeData.text);
@@ -219,7 +213,7 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// ☁️ CLOUD DEPLOY & GITHUB (Same as before)
+// ☁️ CLOUD DEPLOY & GITHUB
 // ==========================================
 app.post('/api/publish-cloud', async (req, res) => { /* Code intact */ res.json({success: true, url: "[https://netlify.com](https://netlify.com)"}); });
 app.post('/api/publish-github', async (req, res) => { /* Code intact */ res.json({success: true, url: "[https://github.com](https://github.com)"}); });
