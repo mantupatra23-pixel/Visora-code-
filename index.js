@@ -185,7 +185,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (FLAT ARCHITECTURE UPDATE)
+// 🏗️ MAIN BUILD API (ANTI-COLLISION UPDATE)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -226,19 +226,30 @@ app.post('/api/build', async (req, res) => {
 
             sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Creating PROPER Website File Structure..." });
             
-            // 🔥 CTO UPDATE: FORCING A FLAT ARCHITECTURE
             const masterPrompt = `Plan a complete Fullstack PROPER WEBSITE project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
             2. Frontend MUST include core files AND essential structural components explicitly (e.g., Navbar, HeroSection, Footer, Dashboard).
-            3. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories like 'src/components/Dashboard/'. Use 'src/components/Dashboard.jsx' instead.
+            3. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories.
             FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx", "src/components/HeroSection.jsx", "src/components/Footer.jsx"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
-            filesToGenerate = architecture.files_needed || [];
+            let rawFiles = architecture.files_needed || [];
             
-            // Ensure core flat website structure is always present
+            // 🔥 CTO LOGIC FIX: PROGRAMMATIC FLAT ENFORCER
+            // Even if the AI hallucinates nested folders, we chop them off here in JS.
+            let flattenedFiles = [];
+            rawFiles.forEach(f => {
+                if (f.startsWith('src/components/') && f.split('/').length > 3) {
+                    const fileName = path.basename(f);
+                    flattenedFiles.push(`src/components/${fileName}`);
+                } else {
+                    flattenedFiles.push(f);
+                }
+            });
+            filesToGenerate = [...new Set(flattenedFiles)]; // Remove duplicates
+            
             const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx", "src/components/Footer.jsx"];
             essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
         }
@@ -248,6 +259,7 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer Agent 👨‍💻", status: "Coding", details: `Generating ${filename}...` });
                  
+                 // 🔥 CTO LOGIC FIX: ANTI-COLLISION PROMPT
                  const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Fullstack project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
@@ -257,9 +269,10 @@ app.post('/api/build', async (req, res) => {
                  
                  💎 STRICT RULES (VIOLATION CAUSES FATAL CRASH):
                  1. REACT ROUTER v6 ONLY: Use <BrowserRouter>, <Routes> and <Route element={<Component />}>.
-                 2. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT (like CheckoutForm, FeatureCard, Dashboard, etc.) BUT IT IS NOT IN THE 'Project File List', YOU ABSOLUTELY MUST BUILD IT INLINE WITHIN THIS SAME FILE. DO NOT IMPORT IT!
-                 3. NEVER declare mock data in global scope. Put it INSIDE the component function.
-                 4. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
+                 2. 🚫 SCOPE COLLISION BAN: If a component (e.g. Dashboard, Navbar) is already listed in the 'Project File List', YOU MUST ASSUME IT EXISTS. DO NOT redefine it inline inside App.jsx or Babel will crash with "Identifier already declared". Just use <Dashboard />.
+                 3. 🚫 MINOR INLINE COMPONENTS ONLY: If you absolutely need a small component NOT in the list, you can build it inline, but give it a unique name like 'const InlineCard'.
+                 4. NEVER declare mock data in global scope. Put it INSIDE the component function.
+                 5. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
                  
                  Write the full code for ${filename} now:`;
                  
