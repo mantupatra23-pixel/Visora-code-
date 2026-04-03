@@ -139,7 +139,7 @@ app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, password } = req.body;
         let existingUser = await User.findOne({ email });
-        if (existingUser) return res.status(400).json({ error: "User already exists with this email!" });
+        if (existingUser) return res.status(400).json({ error: "User already exists!" });
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
         const newUser = await User.create({ name, email, password: hashedPassword, credits: 10 });
@@ -172,14 +172,13 @@ app.post('/api/save-project', async (req, res) => {
 app.get('/api/get-projects', async (req, res) => {
     try {
         const { userId } = req.query;
-        const query = userId ? { userId: userId } : {}; 
-        const projects = await Project.find(query).sort({ createdAt: -1 }).limit(10);
+        const projects = await Project.find(userId ? { userId: userId } : {}).sort({ createdAt: -1 }).limit(10);
         res.status(200).json({ success: true, data: projects });
     } catch (error) { res.status(500).json({ error: "Fetch failed." }); }
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (MULTI-PAGE PROFESSIONAL UPDATE)
+// 🏗️ MAIN BUILD API (NAMESPACE FIX UPDATE)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -197,7 +196,7 @@ app.post('/api/build', async (req, res) => {
         const isFollowUp = Object.keys(existingFiles || {}).length > 0;
         
         let filesToGenerate = [];
-        let uiContext = "Use modern premium UI with Tailwind CSS. Beautiful hero sections, feature grids, and clean footers.";
+        let uiContext = "Use modern premium UI with Tailwind CSS. Avoid raw SVGs, use lucide-react instead.";
         let copyContext = "Use highly realistic professional marketing copy and dummy data.";
 
         if (isFollowUp) {
@@ -208,7 +207,7 @@ app.post('/api/build', async (req, res) => {
 
             try {
                 sendEvent('log', { agent: "Copywriter Agent ✍️", status: "Drafting", details: "Writing professional marketing copy..." });
-                const copyRes = await safeGenerate(`You are a Copywriter. For: "${prompt}", create highly engaging Headings, About Us text, and realistic dummy data. Output ONLY pure text.`, false);
+                const copyRes = await safeGenerate(`You are a Copywriter. For: "${prompt}", create highly engaging Headings and dummy data items. Output ONLY pure text.`, false);
                 copyContext = copyRes.text;
             } catch(e) {}
 
@@ -218,16 +217,16 @@ app.post('/api/build', async (req, res) => {
                 uiContext = uiRes.text;
             } catch(e) {}
 
-            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Architecting Multi-Page Professional Website..." });
+            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Architecting Multi-Page Structure..." });
             
-            // 🔥 CTO LOGIC: FORCE A PROFESSIONAL MULTI-PAGE STRUCTURE EVERY TIME
+            // 🔥 CTO UPDATE: FORCING EXCLUSION OF NON-CODE FILES (.png, .ico)
             const masterPrompt = `Plan a complete, professional MULTI-PAGE Fullstack project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
             2. You MUST include a full suite of pages: HomePage, AboutPage, ContactPage, and DashboardPage.
-            3. You MUST include structural components: Navbar, Footer.
+            3. 🚫 MEDIA BAN: NEVER generate image files like 'favicon.ico' or 'logo.png'. ONLY generate text-based code files (.jsx, .css, .html, .py).
             4. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories.
-            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/AboutPage.jsx", "src/components/ContactPage.jsx", "src/components/DashboardPage.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh"]}`;
+            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/DashboardPage.jsx"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
@@ -235,16 +234,18 @@ app.post('/api/build', async (req, res) => {
             
             let flattenedFiles = [];
             rawFiles.forEach(f => {
+                // Ignore any image hallucinations just in case
+                if (f.endsWith('.png') || f.endsWith('.ico') || f.endsWith('.jpg')) return;
+                
                 if (f.startsWith('src/components/') && f.split('/').length > 3) {
-                    const fileName = path.basename(f);
-                    flattenedFiles.push(`src/components/${fileName}`);
+                    flattenedFiles.push(`src/components/${path.basename(f)}`);
                 } else {
                     flattenedFiles.push(f);
                 }
             });
             filesToGenerate = [...new Set(flattenedFiles)]; 
             
-            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/DashboardPage.jsx"];
+            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx"];
             essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
         }
 
@@ -253,7 +254,7 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer Agent 👨‍💻", status: "Coding", details: `Generating ${filename}...` });
                  
-                 // 🔥 CTO LOGIC: TYPESCRIPT BAN & MULTI-PAGE ROUTING INSTRUCTIONS
+                 // 🔥 CTO UPDATE: NAMESPACE SVG BAN & PURE JSX ENFORCEMENT
                  const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Professional Multi-Page project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
@@ -262,24 +263,27 @@ app.post('/api/build', async (req, res) => {
                  ✍️ COPYWRITING: ${copyContext}
                  
                  💎 STRICT RULES (VIOLATION CAUSES FATAL CRASH):
-                 1. 🚫 NO TYPESCRIPT ALLOWED: You MUST write PURE JavaScript (JSX). DO NOT use 'interface', 'type', or type annotations like 'name: string'. Babel will crash if you use TypeScript!
-                 2. REACT ROUTER v6 ONLY: In App.jsx, use <BrowserRouter>, <Routes> and <Route element={<Component />}> to link HomePage, AboutPage, ContactPage, etc.
-                 3. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT BUT IT IS NOT IN THE 'Project File List', YOU ABSOLUTELY MUST BUILD IT INLINE WITHIN THIS SAME FILE. DO NOT IMPORT IT!
-                 4. NEVER use lazy block comments like '/* Add content here */'. Write the actual real code and layout.
-                 5. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
+                 1. 🚫 NO NAMESPACES IN JSX: Never use namespace tags like <svg:path> or namespace attributes like xmlns:xlink. React will CRASH. Always use standard camelCase JSX.
+                 2. 🚫 NO TYPESCRIPT ALLOWED: You MUST write PURE JavaScript (JSX). DO NOT use 'interface', 'type', or type annotations.
+                 3. REACT ROUTER v6 ONLY: In App.jsx, use <BrowserRouter>, <Routes> and <Route element={<Component />}>.
+                 4. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT BUT IT IS NOT IN THE 'Project File List', YOU ABSOLUTELY MUST BUILD IT INLINE WITHIN THIS SAME FILE. DO NOT IMPORT IT!
+                 5. NEVER use lazy block comments like '/* Add content here */'.
+                 6. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
                  
                  Write the full code for ${filename} now:`;
                  
                  const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                  let cleanCode = cleanRawCode(codeData.text);
                  
-                 // 🛡️ AGENT: QA BUG-FIXER (TYPESCRIPT & LAZY COMMENT DETECTOR)
+                 // 🛡️ AGENT: QA BUG-FIXER (NAMESPACE & SVG CATCHER)
                  const badPatterns = [
+                     { regex: /<[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+/g, msg: "FATAL: Namespace tags (like <svg:path> or <lucide:Icon>) are strictly forbidden in React JSX. Remove the colon." },
+                     { regex: /\s+[a-zA-Z]+:[a-zA-Z]+=/g, msg: "FATAL: Namespace attributes (like xmlns:xlink) are forbidden in React JSX. Use standard camelCase JSX attributes." },
                      { regex: /<Helmet>/g, msg: "Remove 'Helmet' component." },
                      { regex: /\{\s*\.\.\.\s*\}/g, msg: "Invalid lazy syntax '{ ... }' found. Write actual data." },
-                     { regex: /\/\*[\s\S]*?(add|insert|your)[\s\S]*?\*\//gi, msg: "Lazy block comment found (e.g. /* Add cards here */). Write the actual real layout and code." },
-                     { regex: /\binterface\s+[A-Za-z0-9_]+\s*\{/g, msg: "FATAL: TypeScript 'interface' detected. You MUST rewrite this in pure JavaScript (JSX)." },
-                     { regex: /\btype\s+[A-Za-z0-9_]+\s*=/g, msg: "FATAL: TypeScript 'type' detected. You MUST rewrite this in pure JavaScript (JSX)." }
+                     { regex: /\/\*[\s\S]*?(add|insert|your)[\s\S]*?\*\//gi, msg: "Lazy block comment found. Write the actual real layout and code." },
+                     { regex: /\binterface\s+[A-Za-z0-9_]+\s*\{/g, msg: "FATAL: TypeScript 'interface' detected. Rewrite in pure JavaScript (JSX)." },
+                     { regex: /\btype\s+[A-Za-z0-9_]+\s*=/g, msg: "FATAL: TypeScript 'type' detected. Rewrite in pure JavaScript (JSX)." }
                  ];
 
                  let detectedBugs = [];
@@ -298,7 +302,7 @@ app.post('/api/build', async (req, res) => {
 
                  if (detectedBugs.length > 0) {
                      sendEvent('log', { agent: "QA Agent 🛡️", status: "Fixing Bugs", details: `Errors detected in ${filename}. Auto-healing...` });
-                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete raw pure JavaScript (JSX) code. NO TYPESCRIPT. NO PLACEHOLDERS.`;
+                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete raw pure JavaScript (JSX) code. NO TYPESCRIPT. NO NAMESPACES.`;
                      const fixedData = await safeGenerate(fixPrompt, false);
                      cleanCode = cleanRawCode(fixedData.text);
                  }
