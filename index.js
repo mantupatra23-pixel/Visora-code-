@@ -16,7 +16,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Groq = require('groq-sdk');
 
 // ==========================================
-// 🔐 AUTH & DATABASE
+// 🔐 AUTH & DATABASE MODELS
 // ==========================================
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -76,7 +76,7 @@ const parseBase64 = (dataUrl) => {
 };
 
 // ==========================================
-// 🤖 THE STRICT AI SEQUENCE 
+// 🤖 THE STRICT AI SEQUENCE ENGINE
 // ==========================================
 async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const awsLlmUrl = process.env.AWS_LLM_URL;
@@ -84,7 +84,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const geminiKey = process.env.GEMINI_API_KEY;
     let errorLogs = []; 
 
-    const systemPrompt = "You are a core module of the Mantu Multi-Agent Enterprise Swarm. You write flawless, production-ready code. ALWAYS OUTPUT THE COMPLETE FILE. NEVER leave JSX tags unclosed. NEVER stop mid-generation.";
+    const systemPrompt = "You are a core module of the Mantu Multi-Agent Enterprise Swarm. You write flawless, modern React (v18+) and React Router v6 code. NEVER use deprecated elements like <Switch>. ALWAYS OUTPUT THE COMPLETE FILE WITHOUT TRUNCATION.";
 
     if (attachments && attachments.image) {
         try {
@@ -102,9 +102,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
             let finalAwsUrl = awsLlmUrl.trim();
             if (!finalAwsUrl.endsWith('/api/generate')) finalAwsUrl = finalAwsUrl.replace(/\/$/, '') + '/api/generate';
             console.log(`➡️ Trying AWS GPU (${finalAwsUrl})...`);
-            const awsRes = await axios.post(finalAwsUrl, { 
-                model: "llama3", system: systemPrompt, prompt: promptText, stream: false
-            }, { timeout: 60000 }); 
+            const awsRes = await axios.post(finalAwsUrl, { model: "llama3", system: systemPrompt, prompt: promptText, stream: false }, { timeout: 60000 }); 
             if (awsRes.data && awsRes.data.response) return { text: awsRes.data.response, engine: "AWS_Ollama" };
         } catch (err) { errorLogs.push(`AWS: ${err.message}`); }
     }
@@ -135,12 +133,74 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
 }
 
 // ==========================================
-// 🔐 AUTH & DATABASE
+// 🔐 AUTH ROUTES (FULL CODE)
 // ==========================================
-app.post('/api/signup', async (req, res) => { /* Code Intact */ res.json({success: true}); });
-app.post('/api/login', async (req, res) => { /* Code Intact */ res.json({success: true}); });
-app.post('/api/save-project', async (req, res) => { /* Code Intact */ res.json({success: true}); });
-app.get('/api/get-projects', async (req, res) => { /* Code Intact */ res.json({success: true, data: []}); });
+app.post('/api/signup', async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        let existingUser = await User.findOne({ email });
+        if (existingUser) return res.status(400).json({ error: "User already exists with this email!" });
+        
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        
+        const newUser = await User.create({ name, email, password: hashedPassword, credits: 10 });
+        const token = jwt.sign({ id: newUser._id, plan: newUser.plan }, JWT_SECRET, { expiresIn: '7d' });
+        
+        res.status(201).json({
+            success: true, message: "Account created successfully!", token,
+            user: { id: newUser._id, name: newUser.name, email: newUser.email, credits: newUser.credits }
+        });
+    } catch (error) { 
+        res.status(500).json({ error: "Server Error during Signup." }); 
+    }
+});
+
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ error: "User not found!" });
+        
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ error: "Invalid Credentials." });
+        
+        const token = jwt.sign({ id: user._id, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
+        
+        res.status(200).json({
+            success: true, message: "Logged in successfully!", token,
+            user: { id: user._id, name: user.name, email: user.email, credits: user.credits }
+        });
+    } catch (error) { 
+        res.status(500).json({ error: "Server Error during Login." }); 
+    }
+});
+
+// ==========================================
+// 🗄️ DATABASE ROUTES (FULL CODE)
+// ==========================================
+app.post('/api/save-project', async (req, res) => {
+    try {
+        const { title, files, userId } = req.body;
+        if (!files || Object.keys(files).length === 0) return res.status(400).json({ error: "No files generated to save." });
+        
+        const newProject = await Project.create({ userId: userId, title: title || "New Mantu App", files: files });
+        res.status(201).json({ success: true, message: "Project securely saved to Mantu DB!", projectId: newProject._id });
+    } catch (error) { 
+        res.status(500).json({ error: "Failed to save project to cloud." }); 
+    }
+});
+
+app.get('/api/get-projects', async (req, res) => {
+    try {
+        const { userId } = req.query;
+        const query = userId ? { userId: userId } : {}; 
+        const projects = await Project.find(query).sort({ createdAt: -1 }).limit(10);
+        res.status(200).json({ success: true, data: projects });
+    } catch (error) { 
+        res.status(500).json({ error: "Could not fetch projects." }); 
+    }
+});
 
 // ==========================================
 // 🏗️ MAIN BUILD API (THE 10-AGENT SUPER SWARM)
@@ -161,10 +221,8 @@ app.post('/api/build', async (req, res) => {
         const isFollowUp = Object.keys(existingFiles || {}).length > 0;
         
         let filesToGenerate = [];
-        let uiContext = "Use modern premium UI.";
-        let copyContext = "Use realistic dummy data.";
-        let dbContext = "Standard relational database structure.";
-        let seoContext = "Standard meta tags.";
+        let uiContext = "Use modern premium UI with Tailwind CSS.";
+        let copyContext = "Use realistic dummy data for the UI.";
 
         if (isFollowUp) {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing Follow-up Request..." });
@@ -184,23 +242,11 @@ app.post('/api/build', async (req, res) => {
                 uiContext = uiRes.text;
             } catch(e) {}
 
-            try {
-                sendEvent('log', { agent: "DBA Agent 🗄️", status: "Architecting", backend: true, details: "Designing Database Schema..." });
-                const dbRes = await safeGenerate(`You are a DBA. For: "${prompt}", design a database schema. Output ONLY text.`, false);
-                dbContext = dbRes.text;
-            } catch(e) {}
-
-            try {
-                sendEvent('log', { agent: "SEO Hacker 📈", status: "Optimizing", details: "Generating Semantic structure..." });
-                const seoRes = await safeGenerate(`You are an SEO Expert. For: "${prompt}", define the perfect semantic structure. Output ONLY text.`, false);
-                seoContext = seoRes.text;
-            } catch(e) {}
-
             sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Creating File Structure..." });
             const masterPrompt = `Plan a complete Fullstack project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
-            2. Frontend MUST include core files AND necessary UI components explicitly.
+            2. Frontend MUST include core files AND necessary UI components explicitly. DO NOT overcomplicate.
             FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Header.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
@@ -216,7 +262,6 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer Agent 👨‍💻", status: "Coding", details: `Generating ${filename}...` });
                  
-                 // 🔥 ENHANCED DEVELOPER PROMPT to force completion
                  const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Fullstack project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
@@ -224,60 +269,47 @@ app.post('/api/build', async (req, res) => {
                  🎨 DESIGN SYSTEM: ${uiContext}
                  ✍️ COPYWRITING: ${copyContext}
                  
-                 💎 STRICT RULES:
-                 1. OUTPUT ONLY THE RAW SOURCE CODE. No markdown blocks.
-                 2. NEVER use a React component if it is NOT listed in the 'Project File List'. If missing, write HTML/Tailwind directly.
-                 3. NEVER declare mock data in global scope. Put it INSIDE the component function.
-                 4. 🛑 CRITICAL: ENSURE EVERY SINGLE JSX TAG IS PROPERLY CLOSED (<div></div>). DO NOT STOP GENERATING UNTIL THE FILE IS 100% COMPLETE. THE FILE MUST END WITH 'export default' OR APPROPRIATE CLOSING.
+                 💎 STRICT RULES (VIOLATION CAUSES FATAL CRASH):
+                 1. REACT ROUTER v6 ONLY: Use <Routes> and <Route element={<Component />}>. NEVER use <Switch>.
+                 2. GHOST COMPONENT BAN: NEVER import a component (e.g. CheckoutForm, HeroSection) if it is NOT in the 'Project File List'. Write inline HTML/Tailwind instead!
+                 3. NEVER declare mock data in global scope. Put it INSIDE the component function to prevent collisions.
+                 4. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
                  
                  Write the full code for ${filename} now:`;
                  
                  const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                  let cleanCode = cleanRawCode(codeData.text);
                  
-                 // 🛡️ AGENT 7: QA BUG-FIXER (NOW WITH MATHS/STRUCTURAL VALIDATION)
+                 // 🛡️ AGENT: QA BUG-FIXER (SMART VALIDATION)
                  const badPatterns = [
-                     { regex: /<Helmet>/g, msg: "'Helmet' component is strictly forbidden. Remove it." },
+                     { regex: /<Helmet>/g, msg: "Remove 'Helmet' component." },
                      { regex: /\{\s*\.\.\.\s*\}/g, msg: "Invalid lazy syntax '{ ... }' found. Write actual data." },
-                     { regex: /\/\/\s*(add|insert|your)\s+(real\s+)?(logic|data|code)/gi, msg: "Lazy comments found. Write the actual code." },
-                     { regex: /import\s+.*?from\s+['"](?!\.|react|lucide-react|react-router-dom)[^'"]+['"]/g, msg: "Unapproved library imported. ONLY use 'react', 'lucide-react', or 'react-router-dom'." }
+                     { regex: /\/\/\s*(add|insert)\s+(real\s+)?(logic|data)/gi, msg: "Lazy comments found. Write actual code." }
                  ];
 
                  let detectedBugs = [];
                  badPatterns.forEach(pattern => { if (pattern.regex.test(cleanCode)) detectedBugs.push(pattern.msg); });
 
-                 // ⚙️ STRUCTURAL CHECKS (The Ultimate Fix for JSX Missing Tags)
-                 const openBraces = (cleanCode.match(/\{/g) || []).length;
-                 const closeBraces = (cleanCode.match(/\}/g) || []).length;
-                 if (openBraces !== closeBraces) {
-                     detectedBugs.push("Mismatched braces {}! The code got cut off. You MUST generate the FULL code and ensure all JSX tags and functions are perfectly closed.");
+                 if (cleanCode.includes('<Switch>')) {
+                     detectedBugs.push("FATAL: You used <Switch>. You MUST use React Router v6 <Routes> instead.");
                  }
 
-                 if (filename.endsWith('.jsx') && !cleanCode.includes('export ')) {
-                     detectedBugs.push("Missing 'export'. The React component is incomplete. You must provide the full file ending with the export.");
+                 if (filename.endsWith('.jsx') || filename.endsWith('.tsx')) {
+                     const openBraces = (cleanCode.match(/\{/g) || []).length;
+                     const closeBraces = (cleanCode.match(/\}/g) || []).length;
+                     if (openBraces !== closeBraces) {
+                         detectedBugs.push("Mismatched braces {}! Generate the FULL code and perfectly close all tags.");
+                     }
+                     if (!cleanCode.includes('export ')) {
+                         detectedBugs.push("Missing 'export default'. Component is incomplete.");
+                     }
                  }
 
                  if (detectedBugs.length > 0) {
-                     sendEvent('log', { agent: "QA Agent 🛡️", status: "Fixing Bugs", details: `Structural/Syntax errors detected in ${filename}. Forcing rewrite...` });
-                     const fixPrompt = `You generated incomplete/bad code for '${filename}'. It contains CRITICAL ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, flawless, COMPLETE raw code. Make sure EVERY tag is closed.`;
+                     sendEvent('log', { agent: "QA Agent 🛡️", status: "Fixing Bugs", details: `Errors detected in ${filename}. Auto-healing...` });
+                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete raw code.`;
                      const fixedData = await safeGenerate(fixPrompt, false);
                      cleanCode = cleanRawCode(fixedData.text);
-                 }
-
-                 // ⚡ AGENT 8: PERFORMANCE OPTIMIZER
-                 if (filename.endsWith('.jsx')) {
-                     sendEvent('log', { agent: "Performance Agent ⚡", status: "Optimizing", details: `Boosting rendering speed of ${filename}...` });
-                     const perfPrompt = `Review this React code: '${filename}'. Optimize it for extreme performance. If there are lists, ensure keys are used correctly. Prevent unnecessary re-renders. DO NOT break the code. CODE:\n${cleanCode}\n\nOutput ONLY the optimized raw code.`;
-                     const perfData = await safeGenerate(perfPrompt, false);
-                     cleanCode = cleanRawCode(perfData.text);
-                 }
-
-                 // 🕵️‍♂️ AGENT 9 & 10: CYBERSECURITY & DEVOPS
-                 if (filename.includes('aws-deploy.sh') || filename.includes('main.py')) {
-                     sendEvent('log', { agent: "Cybersecurity/DevOps 🕵️‍♂️", status: "Securing", details: `Hardening ${filename}...` });
-                     const secPrompt = `Review and harden this code: '${filename}'. Ensure NO hardcoded passwords, prevent SQL injections/XSS, validate inputs, ensure CORS is strict, and bash scripts are safe. CODE:\n${cleanCode}\n\nOutput ONLY the secured raw code.`;
-                     const secureData = await safeGenerate(secPrompt, false);
-                     cleanCode = cleanRawCode(secureData.text);
                  }
 
                  const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
@@ -287,7 +319,7 @@ app.post('/api/build', async (req, res) => {
                  await fs.writeFile(absoluteFilePath, cleanCode);
                  sendEvent('file', { filename: filename, code: cleanCode, engine: codeData.engine });
                  
-                 await new Promise(r => setTimeout(r, 2000));
+                 await new Promise(r => setTimeout(r, 1500));
              } catch(err) { 
                  console.error(`Error generating ${filename}:`, err);
                  sendEvent('log', { agent: "System", status: "Error", details: `Failed ${filename}: ${err.message}` });
@@ -303,10 +335,83 @@ app.post('/api/build', async (req, res) => {
 });
 
 // ==========================================
-// ☁️ FULL DEPLOY ROUTE (NETLIFY) & GITHUB
+// ☁️ CLOUD DEPLOY (NETLIFY) (FULL CODE)
 // ==========================================
-app.post('/api/publish-cloud', async (req, res) => { /* Code Intact */ res.json({success: true, url: "[https://netlify.com](https://netlify.com)"}); });
-app.post('/api/publish-github', async (req, res) => { /* Code Intact */ res.json({success: true, url: "[https://github.com](https://github.com)"}); });
+app.post('/api/publish-cloud', async (req, res) => {
+    try {
+        const { compiledHtml } = req.body; 
+        const netlifyToken = process.env.NETLIFY_TOKEN ? process.env.NETLIFY_TOKEN.replace(/[\r\n"' ]/g, '') : null; 
+        
+        io.emit('deploy-log', `\n☁️ Initializing Mantu Cloud Architecture...`);
+        if (!netlifyToken) return res.status(400).json({ error: "Netlify Token Missing in .env" });
+
+        const zipPath = path.join(__dirname, `mantu_frontend_${Date.now()}.zip`);
+        const output = fsSync.createWriteStream(zipPath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        archive.pipe(output);
+        
+        archive.directory(WORKSPACE_DIR, false);
+        if(compiledHtml) archive.append(compiledHtml, { name: 'index.html' });
+
+        await archive.finalize();
+        await new Promise(resolve => output.on('close', resolve));
+
+        io.emit('deploy-log', `\n🚀 Deploying to Netlify Edge via Native cURL...`);
+        const netlifyCmd = `curl -s -X POST -H "Content-Type: application/zip" -H "Authorization: Bearer ${netlifyToken}" --data-binary "@${zipPath}" https://api.netlify.com/api/v1/sites`;
+        const { stdout } = await execPromise(netlifyCmd);
+        const netlifyData = JSON.parse(stdout);
+        
+        await fs.unlink(zipPath).catch(()=>{}); 
+
+        if (netlifyData.url) {
+            io.emit('deploy-log', `\n🎉 MANTU CLOUD DEPLOYMENT COMPLETE!`);
+            res.json({ success: true, url: netlifyData.ssl_url || netlifyData.url });
+        } else {
+            throw new Error(netlifyData.message || "Unknown Netlify Error");
+        }
+    } catch (error) { 
+        io.emit('deploy-log', `\n❌ Deploy Failed: ${error.message}`);
+        res.status(500).json({ error: error.message }); 
+    }
+});
+
+// ==========================================
+// 🐙 GITHUB GITOPS ROUTE (FULL CODE)
+// ==========================================
+app.post('/api/publish-github', async (req, res) => {
+    const { githubToken, repoName } = req.body;
+    if (!githubToken || !repoName) return res.status(400).json({ error: "Missing GitHub Token or Repo Name" });
+
+    try {
+        io.emit('deploy-log', `\n🐙 Connecting to GitHub API...`);
+        const userRes = await axios.get('[https://api.github.com/user](https://api.github.com/user)', { headers: { 'Authorization': `token ${githubToken}` }});
+        const username = userRes.data.login;
+        io.emit('deploy-log', `\n👤 Authenticated as: @${username}`);
+        io.emit('deploy-log', `\n📦 Creating Repository: ${repoName}...`);
+
+        await axios.post('[https://api.github.com/user/repos](https://api.github.com/user/repos)', 
+            { name: repoName, private: false, description: "Fullstack App generated by Mantu OS 🚀" },
+            { headers: { 'Authorization': `token ${githubToken}` } }
+        ).catch(e => {}); 
+
+        const repoUrl = `https://${githubToken}@github.com/${username}/${repoName}.git`;
+        io.emit('deploy-log', `\n⚙️ Pushing Enterprise Structure to GitHub...`);
+        
+        const gitCommands = `cd ${WORKSPACE_DIR} && rm -rf .git && git init && git config user.email "cto@mantu.ai" && git config user.name "Mantu Agent" && git add . && git commit -m "🚀 Automated Fullstack App by Mantu OS" && git branch -M main && git remote add origin ${repoUrl} && git push -u origin main --force`;
+
+        exec(gitCommands, (err, stdout, stderr) => {
+            if (err) {
+                io.emit('deploy-log', `\n❌ Git Push Failed. Ensure token has 'repo' permissions.`);
+                return res.status(500).json({ error: "Git push failed." });
+            }
+            io.emit('deploy-log', `\n🎉 Successfully pushed to GitHub!`);
+            res.json({ success: true, message: "Pushed to GitHub successfully!", url: `https://github.com/${username}/${repoName}` });
+        });
+    } catch (error) { 
+        io.emit('deploy-log', `\n❌ GitHub Error: ${error.message}`);
+        res.status(500).json({ error: error.message }); 
+    }
+});
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Mantu Enterprise Engine is running on port ${PORT}`));
