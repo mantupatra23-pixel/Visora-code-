@@ -41,7 +41,7 @@ const WORKSPACE_DIR = path.join(__dirname, "mantu_workspace");
 const JWT_SECRET = process.env.JWT_SECRET || "mantu_ai_super_secret_key_2026";
 
 // ==========================================
-// 🧠 HELPER FUNCTIONS (PRO CODE CLEANER)
+// 🧠 HELPER FUNCTIONS 
 // ==========================================
 const extractJson = (text) => {
     try {
@@ -76,7 +76,7 @@ const parseBase64 = (dataUrl) => {
 };
 
 // ==========================================
-// 🤖 THE STRICT AI SEQUENCE (FIXED API BUGS)
+// 🤖 THE STRICT AI SEQUENCE (AWS SMART-ROUTING)
 // ==========================================
 async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const awsLlmUrl = process.env.AWS_LLM_URL;
@@ -84,14 +84,13 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const geminiKey = process.env.GEMINI_API_KEY;
     let errorLogs = []; 
 
-    const systemPrompt = "You are an Elite Fullstack Software Engineer. You write flawless, production-ready React (Frontend), FastAPI (Backend), and deployment scripts (AWS/Render). NEVER use placeholders.";
+    const systemPrompt = "You are an Elite Fullstack Software Engineer. You write flawless, production-ready React (Frontend), FastAPI (Backend), and deployment scripts. NEVER use placeholders.";
 
-    // 📸 VISION OVERRIDE (For Image Context)
+    // 📸 VISION OVERRIDE
     if (attachments && attachments.image) {
         try {
             if(!geminiKey) throw new Error("Gemini Key required for images");
             const genAI = new GoogleGenerativeAI(geminiKey);
-            // 🔥 FIX: Changed 'gemini-1.5-pro-latest' to 'gemini-1.5-pro' to fix 404 Error
             const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro", systemInstruction: systemPrompt });
             const parsed = parseBase64(attachments.image);
             const res = await geminiModel.generateContent([promptText, { inlineData: { data: parsed.data, mimeType: parsed.mimeType } }]);
@@ -99,17 +98,29 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch(e) { console.log("Vision Failed.", e.message); }
     }
 
-    // 🏆 SEQUENCE 1: AWS GPU SERVER
+    // 🏆 SEQUENCE 1: AWS OLLAMA GPU SERVER
     if (awsLlmUrl) {
         try {
-            console.log("➡️ Trying AWS...");
-            // Notice: Ensure your AWS_LLM_URL handles POST requests correctly to avoid the 405 error
-            const awsRes = await axios.post(awsLlmUrl, { model: "llama", prompt: promptText }, { timeout: 25000 });
-            if (awsRes.data?.choices?.[0]?.message?.content) {
-                return { text: awsRes.data.choices[0].message.content, engine: "AWS_LLM" };
+            // 🔥 CTO FIX: Automatically append '/api/generate' if missing
+            let finalAwsUrl = awsLlmUrl.trim();
+            if (!finalAwsUrl.endsWith('/api/generate')) {
+                finalAwsUrl = finalAwsUrl.replace(/\/$/, '') + '/api/generate';
+            }
+
+            console.log(`➡️ Trying AWS GPU (${finalAwsUrl})...`);
+            const awsRes = await axios.post(finalAwsUrl, { 
+                model: "llama3", 
+                system: systemPrompt,
+                prompt: promptText,
+                stream: false
+            }, { timeout: 60000 }); 
+            
+            if (awsRes.data && awsRes.data.response) {
+                console.log("✅ AWS Llama 3 Generated Code Successfully!");
+                return { text: awsRes.data.response, engine: "AWS_Ollama" };
             }
         } catch (err) { 
-            console.log("⚠️ AWS Failed:", err.message); 
+            console.log("⚠️ AWS Failed/Timeout:", err.message); 
             errorLogs.push(`AWS: ${err.message}`);
         }
     }
@@ -139,7 +150,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         try {
             console.log("➡️ Trying Gemini...");
             const genAI = new GoogleGenerativeAI(geminiKey);
-            // 🔥 FIX: Updated model name to resolve the 404 Not Found error
             const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro", systemInstruction: systemPrompt }); 
             const res = await geminiModel.generateContent(promptText);
             return { text: res.response.text(), engine: "Gemini" };
@@ -208,7 +218,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (FULLSTACK + AWS SCRIPTS)
+// 🏗️ MAIN BUILD API (FULLSTACK)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -231,23 +241,21 @@ app.post('/api/build', async (req, res) => {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing Code Modifications..." });
             filesToGenerate = Object.keys(existingFiles);
         } else {
-            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting Fullstack Modelence Blueprint..." });
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting Fullstack Blueprint..." });
             
-            // 🔥 THE FULLSTACK MASTER PROMPT
-            const masterPrompt = `Plan a complete Fullstack SaaS project for: "${prompt}".
+            const masterPrompt = `Plan a complete Fullstack project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
-            2. Frontend (React/Vite): package.json, vite.config.js, tailwind.config.js, index.html, src/main.jsx, src/index.css, src/App.jsx.
-            3. Backend (FastAPI Python): backend/main.py, backend/requirements.txt.
-            4. Deployment Scripts: aws-deploy.sh, render.yaml.
+            2. Frontend: package.json, vite.config.js, tailwind.config.js, index.html, src/main.jsx, src/index.css, src/App.jsx.
+            3. Backend: backend/main.py, backend/requirements.txt.
+            4. Deployment Scripts: aws-deploy.sh.
             FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "src/App.jsx", "backend/main.py", "aws-deploy.sh"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
             filesToGenerate = architecture.files_needed || [];
             
-            // FORCE CORE FULLSTACK FILES IF AI FORGETS
-            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh", "render.yaml"];
+            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh"];
             essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
         }
 
@@ -262,10 +270,10 @@ app.post('/api/build', async (req, res) => {
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
                  CRITICAL RULES:
-                 1. OUTPUT ONLY THE RAW SOURCE CODE. No explanations, no markdown blocks.
+                 1. OUTPUT ONLY THE RAW SOURCE CODE. No markdown blocks.
                  2. If React Frontend: Add realistic mock data INSIDE components. Don't wrap App.jsx in routers.
-                 3. If Python Backend: Write a complete FastAPI backend with proper endpoints and CORS middleware.
-                 4. If aws-deploy.sh: Write valid bash commands to deploy the frontend and backend on an AWS EC2 instance.
+                 3. If Python Backend: Write a complete FastAPI backend.
+                 4. If aws-deploy.sh: Write valid bash commands.
                  
                  Write the full code for ${filename} now:`;
                  
