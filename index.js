@@ -178,7 +178,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (THE ABSOLUTE SANITIZER UPDATE)
+// 🏗️ MAIN BUILD API (CRYPTO-SAFE & PAGE-LOCK UPDATE)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -217,52 +217,42 @@ app.post('/api/build', async (req, res) => {
                 uiContext = uiRes.text;
             } catch(e) {}
 
-            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Architecting Multi-Page Professional Website..." });
+            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Architecting Multi-Page Structure..." });
             
             const masterPrompt = `Plan a complete, professional MULTI-PAGE Fullstack project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
             2. You MUST include a full suite of pages: HomePage, AboutPage, ContactPage, and DashboardPage.
-            3. You MUST include structural components: Navbar, Footer.
-            4. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories like 'src/pages/'.
-            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/DashboardPage.jsx"]}`;
+            3. 🚫 MEDIA BAN: NEVER generate image files like 'favicon.ico' or 'logo.png'. ONLY generate text-based code files (.jsx, .css, .html, .py).
+            4. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories.
+            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/AboutPage.jsx", "src/components/ContactPage.jsx", "src/components/DashboardPage.jsx"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
             let rawFiles = architecture.files_needed || [];
             
-            // 🔥 THE CTO ABSOLUTE FILE PATH SANITIZER 🔥
             let flattenedFiles = [];
             rawFiles.forEach(f => {
-                // Block image/icon hallucination immediately
                 if (f.match(/\.(png|jpe?g|gif|svg|ico)$/i)) return;
 
-                // For all JavaScript/JSX files, forcefully map them
                 if (f.endsWith('.jsx') || f.endsWith('.js') || f.endsWith('.tsx')) {
                     const fileName = path.basename(f);
-                    
-                    // Allow root config files
                     if (['vite.config.js', 'tailwind.config.js', 'postcss.config.js'].includes(fileName)) {
                         flattenedFiles.push(fileName);
-                    }
-                    // Allow Core React files in src/
-                    else if (['main.jsx', 'App.jsx', 'index.js', 'index.jsx'].includes(fileName)) {
+                    } else if (['main.jsx', 'App.jsx', 'index.js', 'index.jsx'].includes(fileName)) {
                         flattenedFiles.push(`src/${fileName}`);
-                    }
-                    // FORCE EVERYTHING ELSE INTO src/components/
-                    else {
+                    } else {
                         flattenedFiles.push(`src/components/${fileName}`);
                     }
                 } else {
-                    // non-js files like package.json, index.html, main.py
                     flattenedFiles.push(f);
                 }
             });
             
-            // [...new Set()] removes duplicates (e.g., if AI generated src/pages/HomePage and src/components/HomePage, now we only have ONE src/components/HomePage)
             filesToGenerate = [...new Set(flattenedFiles)]; 
             
-            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx"];
+            // 🔥 CTO UPDATE: FORCING ALL PAGES TO EXIST
+            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/AboutPage.jsx", "src/components/ContactPage.jsx", "src/components/DashboardPage.jsx"];
             essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
         }
 
@@ -271,6 +261,7 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer Agent 👨‍💻", status: "Coding", details: `Generating ${filename}...` });
                  
+                 // 🔥 CTO UPDATE: NO UNQUOTED CURRENCY & NO INLINE PAGES IN APP.JSX
                  const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Professional Multi-Page project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
@@ -279,19 +270,21 @@ app.post('/api/build', async (req, res) => {
                  ✍️ COPYWRITING: ${copyContext}
                  
                  💎 STRICT RULES (VIOLATION CAUSES FATAL CRASH):
-                 1. 🚫 NO TYPESCRIPT ALLOWED: You MUST write PURE JavaScript (JSX). DO NOT use 'interface' or type annotations. Babel will crash.
-                 2. REACT ROUTER v6 ONLY: In App.jsx, use <BrowserRouter>, <Routes> and <Route element={<Component />}>.
-                 3. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT BUT IT IS NOT IN THE 'Project File List', YOU ABSOLUTELY MUST BUILD IT INLINE WITHIN THIS SAME FILE. DO NOT IMPORT IT!
-                 4. NEVER use lazy block comments like '/* Add content here */'. Write the actual real code.
-                 5. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
+                 1. 🚫 NO UNQUOTED CURRENCY: In JavaScript objects/arrays, NEVER use unquoted dollar signs (e.g., WRONG: price: $45000). You MUST wrap them in quotes (RIGHT: price: "$45000") or use raw numbers (RIGHT: price: 45000).
+                 2. 🚫 NO INLINE PAGES IN App.jsx: In App.jsx, DO NOT write 'function HomePage() { }' or 'function DashboardPage() { }'. App.jsx is ONLY for <Routes>. The actual pages are separate files!
+                 3. 🚫 NO NAMESPACES: Never use <svg:path> or xmlns:xlink.
+                 4. 🚫 NO TYPESCRIPT ALLOWED: You MUST write PURE JavaScript (JSX).
+                 5. REACT ROUTER v6 ONLY: Use <BrowserRouter>, <Routes> and <Route element={<Component />}>.
+                 6. COMPLETE FILE: Output the ENTIRE file perfectly closed.
                  
                  Write the full code for ${filename} now:`;
                  
                  const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                  let cleanCode = cleanRawCode(codeData.text);
                  
-                 // 🛡️ AGENT: QA BUG-FIXER
+                 // 🛡️ AGENT: QA BUG-FIXER (CRYPTO CURRENCY DETECTOR & APP.JSX GUARD)
                  const badPatterns = [
+                     { regex: /:\s*\$[0-9\,\.]+/g, msg: "FATAL: Unquoted currency symbol in JavaScript object (e.g., price: $100). You MUST wrap it in quotes like price: '$100'." },
                      { regex: /<[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+/g, msg: "Remove namespace tags like <svg:path>." },
                      { regex: /\s+[a-zA-Z]+:[a-zA-Z]+=/g, msg: "Remove namespace attributes like xmlns:xlink." },
                      { regex: /<Helmet>/g, msg: "Remove 'Helmet' component." },
@@ -303,6 +296,13 @@ app.post('/api/build', async (req, res) => {
 
                  let detectedBugs = [];
                  badPatterns.forEach(pattern => { if (pattern.regex.test(cleanCode)) detectedBugs.push(pattern.msg); });
+
+                 // Protect App.jsx from Inline Page Component Declarations
+                 if (filename.includes('App.jsx')) {
+                     if (cleanCode.match(/function\s+(HomePage|AboutPage|ContactPage|DashboardPage)\s*\(/)) {
+                         detectedBugs.push("FATAL: You redefined a page component (like function HomePage) inside App.jsx! Do not redefine them. Only set up the <Routes>.");
+                     }
+                 }
 
                  if (filename.endsWith('.jsx') || filename.endsWith('.tsx')) {
                      const openBraces = (cleanCode.match(/\{/g) || []).length;
@@ -317,7 +317,7 @@ app.post('/api/build', async (req, res) => {
 
                  if (detectedBugs.length > 0) {
                      sendEvent('log', { agent: "QA Agent 🛡️", status: "Fixing Bugs", details: `Errors detected in ${filename}. Auto-healing...` });
-                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete pure JavaScript (JSX) code. NO TYPESCRIPT.`;
+                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete pure JavaScript (JSX) code. NO UNQUOTED CURRENCY. NO INLINE PAGES IN APP.JSX.`;
                      const fixedData = await safeGenerate(fixPrompt, false);
                      cleanCode = cleanRawCode(fixedData.text);
                  }
