@@ -86,7 +86,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
 
     const systemPrompt = "You are an Elite Fullstack Software Engineer. You write flawless, production-ready React (Frontend), FastAPI (Backend), and deployment scripts. NEVER use placeholders.";
 
-    // 📸 VISION OVERRIDE
     if (attachments && attachments.image) {
         try {
             if(!geminiKey) throw new Error("Gemini Key required for images");
@@ -98,10 +97,8 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch(e) { console.log("Vision Failed.", e.message); }
     }
 
-    // 🏆 SEQUENCE 1: AWS OLLAMA GPU SERVER
     if (awsLlmUrl) {
         try {
-            // 🔥 CTO FIX: Automatically append '/api/generate' if missing
             let finalAwsUrl = awsLlmUrl.trim();
             if (!finalAwsUrl.endsWith('/api/generate')) {
                 finalAwsUrl = finalAwsUrl.replace(/\/$/, '') + '/api/generate';
@@ -125,7 +122,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         }
     }
 
-    // 🥈 SEQUENCE 2: GROQ API
     if (groqKey) {
         try {
             console.log("➡️ Trying Groq...");
@@ -145,7 +141,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         }
     }
 
-    // 🥉 SEQUENCE 3: GEMINI API
     if (geminiKey) {
         try {
             console.log("➡️ Trying Gemini...");
@@ -218,7 +213,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (FULLSTACK)
+// 🏗️ MAIN BUILD API (FULLSTACK + GHOST COMPONENT FIX)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -243,13 +238,12 @@ app.post('/api/build', async (req, res) => {
         } else {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting Fullstack Blueprint..." });
             
+            // 🔥 FIX 1: Explicitly forcing AI to list component files
             const masterPrompt = `Plan a complete Fullstack project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
-            2. Frontend: package.json, vite.config.js, tailwind.config.js, index.html, src/main.jsx, src/index.css, src/App.jsx.
-            3. Backend: backend/main.py, backend/requirements.txt.
-            4. Deployment Scripts: aws-deploy.sh.
-            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "src/App.jsx", "backend/main.py", "aws-deploy.sh"]}`;
+            2. Frontend MUST include core files AND necessary UI components explicitly.
+            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Header.jsx", "src/components/ProductCard.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
@@ -266,14 +260,15 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer", status: "Coding", details: `Generating ${filename}...` });
                  
+                 // 🔥 FIX 2: Banning the use of Ghost Components
                  const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Fullstack project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
                  CRITICAL RULES:
                  1. OUTPUT ONLY THE RAW SOURCE CODE. No markdown blocks.
-                 2. If React Frontend: Add realistic mock data INSIDE components. Don't wrap App.jsx in routers.
-                 3. If Python Backend: Write a complete FastAPI backend.
-                 4. If aws-deploy.sh: Write valid bash commands.
+                 2. 🚫 GHOST COMPONENT BAN: NEVER use or import a React component (like <ProductCard /> or <Header />) if it is NOT explicitly listed in the 'Project File List' above. If a component you need isn't in the list, write its HTML/Tailwind code directly INSIDE the current file instead!
+                 3. NEVER declare mock data in the global scope outside the component. Put it INSIDE the component function.
+                 4. Do NOT wrap components in <Router> or <BrowserRouter>.
                  
                  Write the full code for ${filename} now:`;
                  
