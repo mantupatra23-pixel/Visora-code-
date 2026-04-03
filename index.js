@@ -53,7 +53,7 @@ const extractJson = (text) => {
     } catch (e) { 
         return { 
             tech_stack: "React + FastAPI", 
-            files_needed: ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx"] 
+            files_needed: ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx"] 
         }; 
     }
 };
@@ -84,7 +84,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const geminiKey = process.env.GEMINI_API_KEY;
     let errorLogs = []; 
 
-    const systemPrompt = "You are a core module of the Mantu Multi-Agent Enterprise Swarm. You write flawless, modern React (v18+) code. NEVER output partial code. ALWAYS output the entire file content.";
+    const systemPrompt = "You are a core module of the Mantu Multi-Agent Enterprise Swarm. You write flawless, modern React (v18+) code in PURE JAVASCRIPT (JSX). NEVER use TypeScript. NEVER output partial code. ALWAYS output the entire file content.";
 
     if (attachments && attachments.image) {
         try {
@@ -144,11 +144,8 @@ app.post('/api/signup', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, salt);
         const newUser = await User.create({ name, email, password: hashedPassword, credits: 10 });
         const token = jwt.sign({ id: newUser._id, plan: newUser.plan }, JWT_SECRET, { expiresIn: '7d' });
-        res.status(201).json({
-            success: true, message: "Account created successfully!", token,
-            user: { id: newUser._id, name: newUser.name, email: newUser.email, credits: newUser.credits }
-        });
-    } catch (error) { res.status(500).json({ error: "Server Error during Signup." }); }
+        res.status(201).json({ success: true, message: "Account created!", token, user: { id: newUser._id, name: newUser.name, email: newUser.email, credits: newUser.credits } });
+    } catch (error) { res.status(500).json({ error: "Server Error." }); }
 });
 
 app.post('/api/login', async (req, res) => {
@@ -159,11 +156,8 @@ app.post('/api/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ error: "Invalid Credentials." });
         const token = jwt.sign({ id: user._id, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
-        res.status(200).json({
-            success: true, message: "Logged in successfully!", token,
-            user: { id: user._id, name: user.name, email: user.email, credits: user.credits }
-        });
-    } catch (error) { res.status(500).json({ error: "Server Error during Login." }); }
+        res.status(200).json({ success: true, message: "Logged in!", token, user: { id: user._id, name: user.name, email: user.email, credits: user.credits } });
+    } catch (error) { res.status(500).json({ error: "Server Error." }); }
 });
 
 app.post('/api/save-project', async (req, res) => {
@@ -171,8 +165,8 @@ app.post('/api/save-project', async (req, res) => {
         const { title, files, userId } = req.body;
         if (!files || Object.keys(files).length === 0) return res.status(400).json({ error: "No files generated to save." });
         const newProject = await Project.create({ userId: userId, title: title || "New Mantu App", files: files });
-        res.status(201).json({ success: true, message: "Project securely saved to Mantu DB!", projectId: newProject._id });
-    } catch (error) { res.status(500).json({ error: "Failed to save project to cloud." }); }
+        res.status(201).json({ success: true, message: "Project saved!", projectId: newProject._id });
+    } catch (error) { res.status(500).json({ error: "Failed to save." }); }
 });
 
 app.get('/api/get-projects', async (req, res) => {
@@ -181,11 +175,11 @@ app.get('/api/get-projects', async (req, res) => {
         const query = userId ? { userId: userId } : {}; 
         const projects = await Project.find(query).sort({ createdAt: -1 }).limit(10);
         res.status(200).json({ success: true, data: projects });
-    } catch (error) { res.status(500).json({ error: "Could not fetch projects." }); }
+    } catch (error) { res.status(500).json({ error: "Fetch failed." }); }
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (ANTI-COLLISION UPDATE)
+// 🏗️ MAIN BUILD API (MULTI-PAGE PROFESSIONAL UPDATE)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -203,8 +197,8 @@ app.post('/api/build', async (req, res) => {
         const isFollowUp = Object.keys(existingFiles || {}).length > 0;
         
         let filesToGenerate = [];
-        let uiContext = "Use modern premium UI with Tailwind CSS. High quality padding, shadows, and spacing.";
-        let copyContext = "Use realistic dummy data.";
+        let uiContext = "Use modern premium UI with Tailwind CSS. Beautiful hero sections, feature grids, and clean footers.";
+        let copyContext = "Use highly realistic professional marketing copy and dummy data.";
 
         if (isFollowUp) {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing Follow-up Request..." });
@@ -214,7 +208,7 @@ app.post('/api/build', async (req, res) => {
 
             try {
                 sendEvent('log', { agent: "Copywriter Agent ✍️", status: "Drafting", details: "Writing professional marketing copy..." });
-                const copyRes = await safeGenerate(`You are a Copywriter. For: "${prompt}", create highly engaging Headings and dummy data items. Output ONLY pure text.`, false);
+                const copyRes = await safeGenerate(`You are a Copywriter. For: "${prompt}", create highly engaging Headings, About Us text, and realistic dummy data. Output ONLY pure text.`, false);
                 copyContext = copyRes.text;
             } catch(e) {}
 
@@ -224,21 +218,21 @@ app.post('/api/build', async (req, res) => {
                 uiContext = uiRes.text;
             } catch(e) {}
 
-            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Creating PROPER Website File Structure..." });
+            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Architecting Multi-Page Professional Website..." });
             
-            const masterPrompt = `Plan a complete Fullstack PROPER WEBSITE project for: "${prompt}".
+            // 🔥 CTO LOGIC: FORCE A PROFESSIONAL MULTI-PAGE STRUCTURE EVERY TIME
+            const masterPrompt = `Plan a complete, professional MULTI-PAGE Fullstack project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
-            2. Frontend MUST include core files AND essential structural components explicitly (e.g., Navbar, HeroSection, Footer, Dashboard).
-            3. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories.
-            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx", "src/components/HeroSection.jsx", "src/components/Footer.jsx"]}`;
+            2. You MUST include a full suite of pages: HomePage, AboutPage, ContactPage, and DashboardPage.
+            3. You MUST include structural components: Navbar, Footer.
+            4. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories.
+            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/AboutPage.jsx", "src/components/ContactPage.jsx", "src/components/DashboardPage.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
             let rawFiles = architecture.files_needed || [];
             
-            // 🔥 CTO LOGIC FIX: PROGRAMMATIC FLAT ENFORCER
-            // Even if the AI hallucinates nested folders, we chop them off here in JS.
             let flattenedFiles = [];
             rawFiles.forEach(f => {
                 if (f.startsWith('src/components/') && f.split('/').length > 3) {
@@ -248,9 +242,9 @@ app.post('/api/build', async (req, res) => {
                     flattenedFiles.push(f);
                 }
             });
-            filesToGenerate = [...new Set(flattenedFiles)]; // Remove duplicates
+            filesToGenerate = [...new Set(flattenedFiles)]; 
             
-            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx", "src/components/Footer.jsx"];
+            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/DashboardPage.jsx"];
             essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
         }
 
@@ -259,8 +253,8 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer Agent 👨‍💻", status: "Coding", details: `Generating ${filename}...` });
                  
-                 // 🔥 CTO LOGIC FIX: ANTI-COLLISION PROMPT
-                 const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Fullstack project: "${prompt}". 
+                 // 🔥 CTO LOGIC: TYPESCRIPT BAN & MULTI-PAGE ROUTING INSTRUCTIONS
+                 const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Professional Multi-Page project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
                  --- SWARM TEAM CONTEXT ---
@@ -268,10 +262,10 @@ app.post('/api/build', async (req, res) => {
                  ✍️ COPYWRITING: ${copyContext}
                  
                  💎 STRICT RULES (VIOLATION CAUSES FATAL CRASH):
-                 1. REACT ROUTER v6 ONLY: Use <BrowserRouter>, <Routes> and <Route element={<Component />}>.
-                 2. 🚫 SCOPE COLLISION BAN: If a component (e.g. Dashboard, Navbar) is already listed in the 'Project File List', YOU MUST ASSUME IT EXISTS. DO NOT redefine it inline inside App.jsx or Babel will crash with "Identifier already declared". Just use <Dashboard />.
-                 3. 🚫 MINOR INLINE COMPONENTS ONLY: If you absolutely need a small component NOT in the list, you can build it inline, but give it a unique name like 'const InlineCard'.
-                 4. NEVER declare mock data in global scope. Put it INSIDE the component function.
+                 1. 🚫 NO TYPESCRIPT ALLOWED: You MUST write PURE JavaScript (JSX). DO NOT use 'interface', 'type', or type annotations like 'name: string'. Babel will crash if you use TypeScript!
+                 2. REACT ROUTER v6 ONLY: In App.jsx, use <BrowserRouter>, <Routes> and <Route element={<Component />}> to link HomePage, AboutPage, ContactPage, etc.
+                 3. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT BUT IT IS NOT IN THE 'Project File List', YOU ABSOLUTELY MUST BUILD IT INLINE WITHIN THIS SAME FILE. DO NOT IMPORT IT!
+                 4. NEVER use lazy block comments like '/* Add content here */'. Write the actual real code and layout.
                  5. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
                  
                  Write the full code for ${filename} now:`;
@@ -279,11 +273,13 @@ app.post('/api/build', async (req, res) => {
                  const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                  let cleanCode = cleanRawCode(codeData.text);
                  
-                 // 🛡️ AGENT: QA BUG-FIXER
+                 // 🛡️ AGENT: QA BUG-FIXER (TYPESCRIPT & LAZY COMMENT DETECTOR)
                  const badPatterns = [
                      { regex: /<Helmet>/g, msg: "Remove 'Helmet' component." },
                      { regex: /\{\s*\.\.\.\s*\}/g, msg: "Invalid lazy syntax '{ ... }' found. Write actual data." },
-                     { regex: /\/\/\s*(add|insert)\s+(real\s+)?(logic|data)/gi, msg: "Lazy comments found. Write actual code." }
+                     { regex: /\/\*[\s\S]*?(add|insert|your)[\s\S]*?\*\//gi, msg: "Lazy block comment found (e.g. /* Add cards here */). Write the actual real layout and code." },
+                     { regex: /\binterface\s+[A-Za-z0-9_]+\s*\{/g, msg: "FATAL: TypeScript 'interface' detected. You MUST rewrite this in pure JavaScript (JSX)." },
+                     { regex: /\btype\s+[A-Za-z0-9_]+\s*=/g, msg: "FATAL: TypeScript 'type' detected. You MUST rewrite this in pure JavaScript (JSX)." }
                  ];
 
                  let detectedBugs = [];
@@ -302,7 +298,7 @@ app.post('/api/build', async (req, res) => {
 
                  if (detectedBugs.length > 0) {
                      sendEvent('log', { agent: "QA Agent 🛡️", status: "Fixing Bugs", details: `Errors detected in ${filename}. Auto-healing...` });
-                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete raw code.`;
+                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete raw pure JavaScript (JSX) code. NO TYPESCRIPT. NO PLACEHOLDERS.`;
                      const fixedData = await safeGenerate(fixPrompt, false);
                      cleanCode = cleanRawCode(fixedData.text);
                  }
