@@ -20,15 +20,14 @@ const Groq = require('groq-sdk');
 // ==========================================
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('./models/User'); // Make sure you have this model
-const connectDB = require('./config/db'); // Make sure you have this file
-const Project = require('./models/Project'); // Make sure you have this model
+const User = require('./models/User'); 
+const connectDB = require('./config/db'); 
+const Project = require('./models/Project'); 
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "200mb" }));
 
-// Connect to MongoDB
 connectDB();
 
 const server = http.createServer(app);
@@ -52,10 +51,7 @@ const extractJson = (text) => {
         if (start !== -1 && end !== -1) return JSON.parse(cleanText.substring(start, end + 1));
         return JSON.parse(cleanText);
     } catch (e) { 
-        return { 
-            tech_stack: "React + Vite", 
-            files_needed: ["package.json", "vite.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"] 
-        }; 
+        return { tech_stack: "React + Vite", files_needed: ["package.json", "vite.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"] }; 
     }
 };
 
@@ -86,7 +82,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
 
     const systemPrompt = "You are an Elite Frontend Developer. Write complete, production-ready React + Tailwind code. NEVER leave placeholders like '// logic here'.";
 
-    // 📸 VISION OVERRIDE (For Images Only)
     if (attachments && attachments.image) {
         try {
             if(!geminiKey) throw new Error("Gemini Key required");
@@ -98,7 +93,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch(e) { console.log("Vision Failed."); }
     }
 
-    // 🏆 SEQUENCE 1: AWS (Given 25 Seconds to think)
     if (awsLlmUrl) {
         try {
             const awsRes = await axios.post(awsLlmUrl, { model: "llama", prompt: promptText }, { timeout: 25000 });
@@ -108,7 +102,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch (err) { console.log("⚠️ AWS Server Timeout or Offline. Falling back to Groq..."); }
     }
 
-    // 🥈 SEQUENCE 2: GROQ
     if (groqKey) {
         try {
             const groq = new Groq({ apiKey: groqKey });
@@ -121,7 +114,6 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
         } catch (err) { console.log("⚠️ Groq Failed. Falling back to Gemini..."); }
     }
 
-    // 🥉 SEQUENCE 3: GEMINI
     try {
         const genAI = new GoogleGenerativeAI(geminiKey);
         const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: systemPrompt }); 
@@ -146,14 +138,10 @@ app.post('/api/signup', async (req, res) => {
         const token = jwt.sign({ id: newUser._id, plan: newUser.plan }, JWT_SECRET, { expiresIn: '7d' });
 
         res.status(201).json({
-            success: true, 
-            message: "Account created successfully!", 
-            token,
+            success: true, message: "Account created successfully!", token,
             user: { id: newUser._id, name: newUser.name, email: newUser.email, credits: newUser.credits }
         });
-    } catch (error) { 
-        res.status(500).json({ error: "Server Error during Signup." }); 
-    }
+    } catch (error) { res.status(500).json({ error: "Server Error during Signup." }); }
 });
 
 app.post('/api/login', async (req, res) => {
@@ -168,29 +156,22 @@ app.post('/api/login', async (req, res) => {
         const token = jwt.sign({ id: user._id, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
         
         res.status(200).json({
-            success: true, 
-            message: "Logged in successfully!", 
-            token,
+            success: true, message: "Logged in successfully!", token,
             user: { id: user._id, name: user.name, email: user.email, credits: user.credits }
         });
-    } catch (error) { 
-        res.status(500).json({ error: "Server Error during Login." }); 
-    }
+    } catch (error) { res.status(500).json({ error: "Server Error during Login." }); }
 });
 
 // ==========================================
-// 🗄️ FULL DATABASE ROUTES (PROJECT SYNC)
+// 🗄️ FULL DATABASE ROUTES
 // ==========================================
 app.post('/api/save-project', async (req, res) => {
     try {
         const { title, files, userId } = req.body;
         if (!files || Object.keys(files).length === 0) return res.status(400).json({ error: "No files generated to save." });
-        
         const newProject = await Project.create({ userId: userId, title: title || "New Mantu App", files: files });
         res.status(201).json({ success: true, message: "Project securely saved to Mantu DB!", projectId: newProject._id });
-    } catch (error) { 
-        res.status(500).json({ error: "Failed to save project to cloud." }); 
-    }
+    } catch (error) { res.status(500).json({ error: "Failed to save project to cloud." }); }
 });
 
 app.get('/api/get-projects', async (req, res) => {
@@ -199,9 +180,7 @@ app.get('/api/get-projects', async (req, res) => {
         const query = userId ? { userId: userId } : {}; 
         const projects = await Project.find(query).sort({ createdAt: -1 }).limit(10);
         res.status(200).json({ success: true, data: projects });
-    } catch (error) { 
-        res.status(500).json({ error: "Could not fetch projects." }); 
-    }
+    } catch (error) { res.status(500).json({ error: "Could not fetch projects." }); }
 });
 
 // ==========================================
@@ -228,7 +207,7 @@ app.post('/api/build', async (req, res) => {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing UI Overhaul..." });
             filesToGenerate = Object.keys(existingFiles);
         } else {
-            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting React Blueprint via Target Engine..." });
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting React Blueprint..." });
             const masterPrompt = `Design a complete, modern REACT application for: "${prompt}".
             CRITICAL RULES:
             1. Use React + Vite + Tailwind CSS.
@@ -250,12 +229,16 @@ app.post('/api/build', async (req, res) => {
                  try {
                      sendEvent('log', { agent: "Developer", status: "Coding", details: `Generating ${filename}...` });
                      
+                     // 🔥 CRITICAL FIX: FORCING MOCK DATA INSIDE COMPONENTS TO PREVENT SCOPE COLLISION
                      const workerPrompt = `Write the COMPLETE code for '${filename}' for this React app: "${prompt}". 
                      Files available: [ ${filesToGenerate.join(', ')} ]
-                     CRITICAL RULES:
-                     1. DO NOT use map() without default empty arrays (e.g. products = []).
-                     2. Include mock data (real images, descriptions).
-                     3. Do NOT wrap components in <Router> or <BrowserRouter>.
+                     
+                     💎 STRICT RULES TO PREVENT CRASHES:
+                     1. 🚫 SCOPE COLLISION FIX: NEVER declare mock data (like 'const products = [...]') in the global scope outside the component. ALWAYS put your mock data INSIDE the component function.
+                     2. PREVENT .map() CRASHES: ALWAYS use default empty arrays for props.
+                     3. Include beautiful, realistic mock data (images, descriptions) INSIDE the component.
+                     4. Do NOT wrap components in <Router> or <BrowserRouter>.
+                     
                      Return ONLY raw code without Markdown.`;
                      
                      const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
