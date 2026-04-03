@@ -53,7 +53,7 @@ const extractJson = (text) => {
     } catch (e) { 
         return { 
             tech_stack: "React + FastAPI", 
-            files_needed: ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/App.jsx", "src/components/Navbar.jsx", "src/components/HeroSection.jsx", "src/components/Footer.jsx"] 
+            files_needed: ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx"] 
         }; 
     }
 };
@@ -135,13 +135,57 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
 // ==========================================
 // 🔐 AUTH & DATABASE
 // ==========================================
-app.post('/api/signup', async (req, res) => { /* Code Intact */ res.json({success: true}); });
-app.post('/api/login', async (req, res) => { /* Code Intact */ res.json({success: true}); });
-app.post('/api/save-project', async (req, res) => { /* Code Intact */ res.json({success: true}); });
-app.get('/api/get-projects', async (req, res) => { /* Code Intact */ res.json({success: true, data: []}); });
+app.post('/api/signup', async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        let existingUser = await User.findOne({ email });
+        if (existingUser) return res.status(400).json({ error: "User already exists with this email!" });
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        const newUser = await User.create({ name, email, password: hashedPassword, credits: 10 });
+        const token = jwt.sign({ id: newUser._id, plan: newUser.plan }, JWT_SECRET, { expiresIn: '7d' });
+        res.status(201).json({
+            success: true, message: "Account created successfully!", token,
+            user: { id: newUser._id, name: newUser.name, email: newUser.email, credits: newUser.credits }
+        });
+    } catch (error) { res.status(500).json({ error: "Server Error during Signup." }); }
+});
+
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ error: "User not found!" });
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ error: "Invalid Credentials." });
+        const token = jwt.sign({ id: user._id, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
+        res.status(200).json({
+            success: true, message: "Logged in successfully!", token,
+            user: { id: user._id, name: user.name, email: user.email, credits: user.credits }
+        });
+    } catch (error) { res.status(500).json({ error: "Server Error during Login." }); }
+});
+
+app.post('/api/save-project', async (req, res) => {
+    try {
+        const { title, files, userId } = req.body;
+        if (!files || Object.keys(files).length === 0) return res.status(400).json({ error: "No files generated to save." });
+        const newProject = await Project.create({ userId: userId, title: title || "New Mantu App", files: files });
+        res.status(201).json({ success: true, message: "Project securely saved to Mantu DB!", projectId: newProject._id });
+    } catch (error) { res.status(500).json({ error: "Failed to save project to cloud." }); }
+});
+
+app.get('/api/get-projects', async (req, res) => {
+    try {
+        const { userId } = req.query;
+        const query = userId ? { userId: userId } : {}; 
+        const projects = await Project.find(query).sort({ createdAt: -1 }).limit(10);
+        res.status(200).json({ success: true, data: projects });
+    } catch (error) { res.status(500).json({ error: "Could not fetch projects." }); }
+});
 
 // ==========================================
-// 🏗️ MAIN BUILD API (PROPER WEBSITE UPDATE)
+// 🏗️ MAIN BUILD API (FLAT ARCHITECTURE UPDATE)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -182,19 +226,20 @@ app.post('/api/build', async (req, res) => {
 
             sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Creating PROPER Website File Structure..." });
             
-            // 🔥 FIX: FORCING A PROPER WEBSITE STRUCTURE
+            // 🔥 CTO UPDATE: FORCING A FLAT ARCHITECTURE
             const masterPrompt = `Plan a complete Fullstack PROPER WEBSITE project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
-            2. Frontend MUST include core files AND essential structural components explicitly (e.g., Navbar, HeroSection, Footer, Dashboard/MainContent). DO NOT leave it to just App.jsx.
-            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/HeroSection.jsx", "src/components/Footer.jsx"]}`;
+            2. Frontend MUST include core files AND essential structural components explicitly (e.g., Navbar, HeroSection, Footer, Dashboard).
+            3. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories like 'src/components/Dashboard/'. Use 'src/components/Dashboard.jsx' instead.
+            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx", "src/components/HeroSection.jsx", "src/components/Footer.jsx"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
             filesToGenerate = architecture.files_needed || [];
             
-            // Ensure core website structure is always present to prevent 'HeroSection not defined'
-            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx"];
+            // Ensure core flat website structure is always present
+            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx", "src/components/Footer.jsx"];
             essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
         }
 
@@ -203,7 +248,6 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer Agent 👨‍💻", status: "Coding", details: `Generating ${filename}...` });
                  
-                 // 🔥 FIX: STRICT COMPONENT BAN RULE
                  const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Fullstack project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
@@ -213,7 +257,7 @@ app.post('/api/build', async (req, res) => {
                  
                  💎 STRICT RULES (VIOLATION CAUSES FATAL CRASH):
                  1. REACT ROUTER v6 ONLY: Use <BrowserRouter>, <Routes> and <Route element={<Component />}>.
-                 2. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT (like CheckoutForm, FeatureCard, etc.) BUT IT IS NOT IN THE 'Project File List', YOU ABSOLUTELY MUST BUILD IT INLINE WITHIN THIS SAME FILE. DO NOT IMPORT IT!
+                 2. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT (like CheckoutForm, FeatureCard, Dashboard, etc.) BUT IT IS NOT IN THE 'Project File List', YOU ABSOLUTELY MUST BUILD IT INLINE WITHIN THIS SAME FILE. DO NOT IMPORT IT!
                  3. NEVER declare mock data in global scope. Put it INSIDE the component function.
                  4. COMPLETE FILE: Do not truncate code. Ensure all braces {} and JSX tags are closed perfectly. Output the ENTIRE file.
                  
@@ -222,7 +266,7 @@ app.post('/api/build', async (req, res) => {
                  const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                  let cleanCode = cleanRawCode(codeData.text);
                  
-                 // 🛡️ AGENT: QA BUG-FIXER (SMART VALIDATION)
+                 // 🛡️ AGENT: QA BUG-FIXER
                  const badPatterns = [
                      { regex: /<Helmet>/g, msg: "Remove 'Helmet' component." },
                      { regex: /\{\s*\.\.\.\s*\}/g, msg: "Invalid lazy syntax '{ ... }' found. Write actual data." },
@@ -275,8 +319,51 @@ app.post('/api/build', async (req, res) => {
 // ==========================================
 // ☁️ FULL DEPLOY ROUTE & GITHUB
 // ==========================================
-app.post('/api/publish-cloud', async (req, res) => { /* Code Intact */ res.json({success: true, url: "[https://netlify.com](https://netlify.com)"}); });
-app.post('/api/publish-github', async (req, res) => { /* Code Intact */ res.json({success: true, url: "[https://github.com](https://github.com)"}); });
+app.post('/api/publish-cloud', async (req, res) => {
+    try {
+        const { compiledHtml } = req.body; 
+        const netlifyToken = process.env.NETLIFY_TOKEN ? process.env.NETLIFY_TOKEN.replace(/[\r\n"' ]/g, '') : null; 
+        if (!netlifyToken) return res.status(400).json({ error: "Netlify Token Missing in .env" });
+
+        const zipPath = path.join(__dirname, `mantu_frontend_${Date.now()}.zip`);
+        const output = fsSync.createWriteStream(zipPath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        archive.pipe(output);
+        archive.directory(WORKSPACE_DIR, false);
+        if(compiledHtml) archive.append(compiledHtml, { name: 'index.html' });
+
+        await archive.finalize();
+        await new Promise(resolve => output.on('close', resolve));
+
+        const netlifyCmd = `curl -s -X POST -H "Content-Type: application/zip" -H "Authorization: Bearer ${netlifyToken}" --data-binary "@${zipPath}" https://api.netlify.com/api/v1/sites`;
+        const { stdout } = await execPromise(netlifyCmd);
+        const netlifyData = JSON.parse(stdout);
+        
+        await fs.unlink(zipPath).catch(()=>{}); 
+
+        if (netlifyData.url) res.json({ success: true, url: netlifyData.ssl_url || netlifyData.url });
+        else throw new Error(netlifyData.message || "Unknown Netlify Error");
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/publish-github', async (req, res) => {
+    const { githubToken, repoName } = req.body;
+    if (!githubToken || !repoName) return res.status(400).json({ error: "Missing GitHub Token or Repo Name" });
+
+    try {
+        const userRes = await axios.get('[https://api.github.com/user](https://api.github.com/user)', { headers: { 'Authorization': `token ${githubToken}` }});
+        const username = userRes.data.login;
+        await axios.post('[https://api.github.com/user/repos](https://api.github.com/user/repos)', { name: repoName, private: false }, { headers: { 'Authorization': `token ${githubToken}` } }).catch(e => {}); 
+        const repoUrl = `https://${githubToken}@github.com/${username}/${repoName}.git`;
+        
+        const gitCommands = `cd ${WORKSPACE_DIR} && rm -rf .git && git init && git config user.email "cto@mantu.ai" && git config user.name "Mantu Agent" && git add . && git commit -m "🚀 Automated App by Mantu OS" && git branch -M main && git remote add origin ${repoUrl} && git push -u origin main --force`;
+
+        exec(gitCommands, (err) => {
+            if (err) return res.status(500).json({ error: "Git push failed." });
+            res.json({ success: true, url: `https://github.com/${username}/${repoName}` });
+        });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`🚀 Mantu Enterprise Engine is running on port ${PORT}`));
