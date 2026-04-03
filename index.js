@@ -41,7 +41,7 @@ const WORKSPACE_DIR = path.join(__dirname, "mantu_workspace");
 const JWT_SECRET = process.env.JWT_SECRET || "mantu_ai_super_secret_key_2026";
 
 // ==========================================
-// 🧠 HELPER FUNCTIONS
+// 🧠 HELPER FUNCTIONS (PRO CODE CLEANER)
 // ==========================================
 const extractJson = (text) => {
     try {
@@ -51,13 +51,18 @@ const extractJson = (text) => {
         if (start !== -1 && end !== -1) return JSON.parse(cleanText.substring(start, end + 1));
         return JSON.parse(cleanText);
     } catch (e) { 
-        return { tech_stack: "React + Vite", files_needed: ["package.json", "vite.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"] }; 
+        // Fallback robust structure if JSON fails
+        return { 
+            tech_stack: "React + Vite", 
+            files_needed: ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"] 
+        }; 
     }
 };
 
 const cleanRawCode = (text) => {
     if (!text) return "// Output generation failed.";
-    let clean = text;
+    let clean = text.trim();
+    // Remove markdown code blocks strictly
     const match = clean.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
     if (match && match[1]) return match[1].trim();
     clean = clean.replace(/```[a-zA-Z]*\n?/g, "");
@@ -76,50 +81,75 @@ const parseBase64 = (dataUrl) => {
 // 🤖 THE STRICT AI SEQUENCE (1. AWS -> 2. GROQ -> 3. GEMINI)
 // ==========================================
 async function safeGenerate(promptText, isJson = true, attachments = {}) {
+    const awsLlmUrl = process.env.AWS_LLM_URL;
     const groqKey = process.env.GROQ_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
-    const awsLlmUrl = process.env.AWS_LLM_URL;
+    let errorLogs = []; 
 
-    const systemPrompt = "You are an Elite Frontend Developer. Write complete, production-ready React + Tailwind code. NEVER leave placeholders like '// logic here'.";
+    const systemPrompt = "You are an Elite Software Engineer. You write flawless, production-ready React, Tailwind, and Node code. NEVER use placeholders like '// add logic here'. Output EXACTLY what is requested.";
 
+    // 📸 VISION OVERRIDE (For Image Context)
     if (attachments && attachments.image) {
         try {
-            if(!geminiKey) throw new Error("Gemini Key required");
+            if(!geminiKey) throw new Error("Gemini Key required for images");
             const genAI = new GoogleGenerativeAI(geminiKey);
             const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: systemPrompt });
             const parsed = parseBase64(attachments.image);
             const res = await geminiModel.generateContent([promptText, { inlineData: { data: parsed.data, mimeType: parsed.mimeType } }]);
             return { text: res.response.text(), engine: "Gemini Vision" };
-        } catch(e) { console.log("Vision Failed."); }
+        } catch(e) { console.log("Vision Failed.", e.message); }
     }
 
+    // 🏆 SEQUENCE 1: AWS GPU SERVER
     if (awsLlmUrl) {
         try {
+            console.log("➡️ Trying AWS...");
             const awsRes = await axios.post(awsLlmUrl, { model: "llama", prompt: promptText }, { timeout: 25000 });
             if (awsRes.data?.choices?.[0]?.message?.content) {
                 return { text: awsRes.data.choices[0].message.content, engine: "AWS_LLM" };
             }
-        } catch (err) { console.log("⚠️ AWS Server Timeout or Offline. Falling back to Groq..."); }
+        } catch (err) { 
+            console.log("⚠️ AWS Failed/Timeout:", err.message); 
+            errorLogs.push(`AWS: ${err.message}`);
+        }
     }
 
+    // 🥈 SEQUENCE 2: GROQ API
     if (groqKey) {
         try {
+            console.log("➡️ Trying Groq...");
             const groq = new Groq({ apiKey: groqKey });
             const groqRes = await groq.chat.completions.create({
                 messages: [{ role: "system", content: systemPrompt }, { role: "user", content: promptText }],
                 model: "llama-3.3-70b-versatile",
-                temperature: 0.1
+                temperature: 0.1,
+                max_tokens: 6000
             });
-            return { text: groqRes.choices[0].message.content, engine: "Groq" };
-        } catch (err) { console.log("⚠️ Groq Failed. Falling back to Gemini..."); }
+            if (groqRes.choices?.[0]?.message?.content) {
+                return { text: groqRes.choices[0].message.content, engine: "Groq" };
+            }
+        } catch (err) { 
+            console.log("⚠️ Groq Failed:", err.message); 
+            errorLogs.push(`Groq: ${err.message}`);
+        }
     }
 
-    try {
-        const genAI = new GoogleGenerativeAI(geminiKey);
-        const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: systemPrompt }); 
-        const res = await geminiModel.generateContent(promptText);
-        return { text: res.response.text(), engine: "Gemini" };
-    } catch (err) { throw new Error(`All 3 AI Engines (AWS, Groq, Gemini) Failed.`); }
+    // 🥉 SEQUENCE 3: GEMINI API
+    if (geminiKey) {
+        try {
+            console.log("➡️ Trying Gemini...");
+            const genAI = new GoogleGenerativeAI(geminiKey);
+            const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest", systemInstruction: systemPrompt }); 
+            const res = await geminiModel.generateContent(promptText);
+            return { text: res.response.text(), engine: "Gemini" };
+        } catch (err) { 
+            console.log("⚠️ Gemini Failed:", err.message);
+            errorLogs.push(`Gemini: ${err.message}`);
+        }
+    }
+
+    // IF ALL FAIL
+    throw new Error(`All Engines Failed. Details: ${errorLogs.join(' | ')}`);
 }
 
 // ==========================================
@@ -130,13 +160,10 @@ app.post('/api/signup', async (req, res) => {
         const { name, email, password } = req.body;
         let existingUser = await User.findOne({ email });
         if (existingUser) return res.status(400).json({ error: "User already exists with this email!" });
-
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-
         const newUser = await User.create({ name, email, password: hashedPassword, credits: 10 });
         const token = jwt.sign({ id: newUser._id, plan: newUser.plan }, JWT_SECRET, { expiresIn: '7d' });
-
         res.status(201).json({
             success: true, message: "Account created successfully!", token,
             user: { id: newUser._id, name: newUser.name, email: newUser.email, credits: newUser.credits }
@@ -149,12 +176,9 @@ app.post('/api/login', async (req, res) => {
         const { email, password } = req.body;
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ error: "User not found!" });
-
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ error: "Invalid Credentials." });
-
         const token = jwt.sign({ id: user._id, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
-        
         res.status(200).json({
             success: true, message: "Logged in successfully!", token,
             user: { id: user._id, name: user.name, email: user.email, credits: user.credits }
@@ -184,7 +208,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API
+// 🏗️ MAIN BUILD API (GUARANTEED GENERATOR)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -204,54 +228,61 @@ app.post('/api/build', async (req, res) => {
         let filesToGenerate = [];
 
         if (isFollowUp) {
-            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing UI Overhaul..." });
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing UI Modifications..." });
             filesToGenerate = Object.keys(existingFiles);
         } else {
-            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting React Blueprint..." });
-            const masterPrompt = `Design a complete, modern REACT application for: "${prompt}".
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting Target Blueprint..." });
+            
+            const masterPrompt = `Plan a complete React + Vite + Tailwind project for: "${prompt}".
             CRITICAL RULES:
-            1. Use React + Vite + Tailwind CSS.
-            2. Break UI into logical components inside 'src/components/'.
-            Return ONLY a JSON object: {"tech_stack": "React + Vite", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Header.jsx"]}`;
+            1. Return ONLY a JSON object representing the file structure.
+            2. You MUST include core configurations: package.json, vite.config.js, tailwind.config.js, index.html.
+            3. You MUST include core React files: src/main.jsx, src/index.css, src/App.jsx.
+            4. Include necessary components inside src/components/ (e.g. Header.jsx, Footer.jsx).
+            FORMAT: {"tech_stack": "React", "files_needed": ["file1", "file2"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
             filesToGenerate = architecture.files_needed || [];
             
-            const essentialFiles = ["src/App.jsx", "src/index.css", "package.json"];
-            essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
+            // FORCE CORE FILES IF AI FORGETS
+            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"];
+            essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.unshift(f); });
         }
 
-        const concurrencyLimit = 2; 
-        for (let i = 0; i < filesToGenerate.length; i += concurrencyLimit) {
-             const chunk = filesToGenerate.slice(i, i + concurrencyLimit);
-             await Promise.all(chunk.map(async (filename) => {
-                 try {
-                     sendEvent('log', { agent: "Developer", status: "Coding", details: `Generating ${filename}...` });
-                     
-                     // 🔥 CRITICAL FIX: FORCING MOCK DATA INSIDE COMPONENTS TO PREVENT SCOPE COLLISION
-                     const workerPrompt = `Write the COMPLETE code for '${filename}' for this React app: "${prompt}". 
-                     Files available: [ ${filesToGenerate.join(', ')} ]
-                     
-                     💎 STRICT RULES TO PREVENT CRASHES:
-                     1. 🚫 SCOPE COLLISION FIX: NEVER declare mock data (like 'const products = [...]') in the global scope outside the component. ALWAYS put your mock data INSIDE the component function.
-                     2. PREVENT .map() CRASHES: ALWAYS use default empty arrays for props.
-                     3. Include beautiful, realistic mock data (images, descriptions) INSIDE the component.
-                     4. Do NOT wrap components in <Router> or <BrowserRouter>.
-                     
-                     Return ONLY raw code without Markdown.`;
-                     
-                     const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
-                     const cleanCode = cleanRawCode(codeData.text);
-                     
-                     const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
-                     try { await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true }); } 
-                     catch (mkdirErr) { if (mkdirErr.code !== 'EEXIST') throw mkdirErr; }
-                     
-                     await fs.writeFile(absoluteFilePath, cleanCode);
-                     sendEvent('file', { filename: filename, code: cleanCode, engine: codeData.engine });
-                 } catch(err) { console.error(`Error on ${filename}:`, err); }
-             }));
+        // Generate files 1 by 1 to guarantee stability and prevent 429 API blocks
+        for (let i = 0; i < filesToGenerate.length; i++) {
+             const filename = filesToGenerate[i];
+             try {
+                 sendEvent('log', { agent: "Developer", status: "Coding", details: `Generating ${filename}...` });
+                 
+                 const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this project: "${prompt}". 
+                 Project File List: [ ${filesToGenerate.join(', ')} ]
+                 
+                 CRITICAL RULES:
+                 1. OUTPUT ONLY THE RAW SOURCE CODE. No explanations, no markdown formatting blocks.
+                 2. If writing React Components, include beautiful, realistic mock data INSIDE the component (Not in global scope).
+                 3. If writing package.json, include "react", "react-dom", "tailwindcss", "lucide-react".
+                 4. Do NOT wrap components in <BrowserRouter> inside App.jsx or main.jsx.
+                 
+                 Write the full code for ${filename} now:`;
+                 
+                 const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
+                 const cleanCode = cleanRawCode(codeData.text);
+                 
+                 const absoluteFilePath = path.join(WORKSPACE_DIR, filename);
+                 try { await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true }); } 
+                 catch (mkdirErr) { if (mkdirErr.code !== 'EEXIST') throw mkdirErr; }
+                 
+                 await fs.writeFile(absoluteFilePath, cleanCode);
+                 sendEvent('file', { filename: filename, code: cleanCode, engine: codeData.engine });
+                 
+                 // Small pause to prevent hitting rate limits on Free APIs
+                 await new Promise(r => setTimeout(r, 1500));
+             } catch(err) { 
+                 console.error(`Error generating ${filename}:`, err);
+                 sendEvent('log', { agent: "System", status: "Error", details: `Failed ${filename}: ${err.message}` });
+             }
         }
         sendEvent('done', { success: true });
     } catch (error) {
@@ -279,16 +310,12 @@ app.post('/api/publish-cloud', async (req, res) => {
         archive.pipe(output);
         
         archive.directory(WORKSPACE_DIR, false);
-        
-        if(compiledHtml) {
-            archive.append(compiledHtml, { name: 'index.html' });
-        }
+        if(compiledHtml) archive.append(compiledHtml, { name: 'index.html' });
 
         await archive.finalize();
         await new Promise(resolve => output.on('close', resolve));
 
         io.emit('deploy-log', `\n🚀 Deploying to Netlify Edge via Native cURL...`);
-        
         const netlifyCmd = `curl -s -X POST -H "Content-Type: application/zip" -H "Authorization: Bearer ${netlifyToken}" --data-binary "@${zipPath}" https://api.netlify.com/api/v1/sites`;
         const { stdout } = await execPromise(netlifyCmd);
         const netlifyData = JSON.parse(stdout);
@@ -298,9 +325,7 @@ app.post('/api/publish-cloud', async (req, res) => {
         if (netlifyData.url) {
             io.emit('deploy-log', `\n🎉 MANTU CLOUD DEPLOYMENT COMPLETE!`);
             res.json({ success: true, url: netlifyData.ssl_url || netlifyData.url });
-        } else {
-            throw new Error(netlifyData.message || "Unknown Netlify Error");
-        }
+        } else throw new Error(netlifyData.message || "Unknown Netlify Error");
     } catch (error) { 
         io.emit('deploy-log', `\n❌ Deploy Failed: ${error.message}`);
         res.status(500).json({ error: error.message }); 
@@ -316,7 +341,6 @@ app.post('/api/publish-github', async (req, res) => {
 
     try {
         io.emit('deploy-log', `\n🐙 Connecting to GitHub API...`);
-        
         const userRes = await axios.get('[https://api.github.com/user](https://api.github.com/user)', { headers: { 'Authorization': `token ${githubToken}` }});
         const username = userRes.data.login;
         io.emit('deploy-log', `\n👤 Authenticated as: @${username}`);
