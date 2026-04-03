@@ -76,7 +76,7 @@ const parseBase64 = (dataUrl) => {
 };
 
 // ==========================================
-// 🤖 THE STRICT AI SEQUENCE (AWS SMART-ROUTING)
+// 🤖 THE STRICT AI SEQUENCE (PREMIUM UI PROMPTS)
 // ==========================================
 async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const awsLlmUrl = process.env.AWS_LLM_URL;
@@ -84,7 +84,8 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const geminiKey = process.env.GEMINI_API_KEY;
     let errorLogs = []; 
 
-    const systemPrompt = "You are an Elite Fullstack Software Engineer. You write flawless, production-ready React (Frontend), FastAPI (Backend), and deployment scripts. NEVER use placeholders.";
+    // 🔥 CTO UPDATE: Transformed AI into a Premium UI/UX Designer
+    const systemPrompt = "You are an Elite Frontend Architect and World-Class UI/UX Designer. You build STUNNING, premium, modern React applications using Tailwind CSS. Your designs rival Apple, Stripe, and Vercel. You heavily utilize modern CSS Grids, Flexbox, beautiful gradients, glassmorphism, soft shadows, rounded corners, and 'lucide-react' icons. NEVER write basic, ugly HTML. Always provide production-ready, highly styled, spacing-aware code.";
 
     if (attachments && attachments.image) {
         try {
@@ -136,7 +137,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
                 return { text: groqRes.choices[0].message.content, engine: "Groq" };
             }
         } catch (err) { 
-            console.log("⚠️ Groq Failed (Usually 429 Rate Limit):", err.message); 
+            console.log("⚠️ Groq Failed:", err.message); 
             errorLogs.push(`Groq: ${err.message}`);
         }
     }
@@ -213,7 +214,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (FULLSTACK + GHOST COMPONENT FIX)
+// 🏗️ MAIN BUILD API (PREMIUM UI MASTERPLAN)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -236,14 +237,15 @@ app.post('/api/build', async (req, res) => {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing Code Modifications..." });
             filesToGenerate = Object.keys(existingFiles);
         } else {
-            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting Fullstack Blueprint..." });
+            sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Architecting Premium Fullstack Blueprint..." });
             
-            // 🔥 FIX 1: Explicitly forcing AI to list component files
-            const masterPrompt = `Plan a complete Fullstack project for: "${prompt}".
+            // 🔥 CTO UPDATE: Architecting a PROPER website structure
+            const masterPrompt = `Plan a complete, HIGHLY-DESIGNED Fullstack project for: "${prompt}".
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
-            2. Frontend MUST include core files AND necessary UI components explicitly.
-            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Header.jsx", "src/components/ProductCard.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh"]}`;
+            2. Frontend MUST be a multi-section, visually stunning app. Include necessary UI components like Navbars, Sidebars, HeroSections, DataCards, or StatGrids in 'src/components/'.
+            3. Include backend/main.py and deployment scripts.
+            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Dashboard.jsx", "backend/main.py", "backend/requirements.txt", "aws-deploy.sh"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
@@ -260,15 +262,18 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer", status: "Coding", details: `Generating ${filename}...` });
                  
-                 // 🔥 FIX 2: Banning the use of Ghost Components
+                 // 🔥 CTO UPDATE: The "Proper Website" Developer Instructions
                  const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Fullstack project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
-                 CRITICAL RULES:
-                 1. OUTPUT ONLY THE RAW SOURCE CODE. No markdown blocks.
-                 2. 🚫 GHOST COMPONENT BAN: NEVER use or import a React component (like <ProductCard /> or <Header />) if it is NOT explicitly listed in the 'Project File List' above. If a component you need isn't in the list, write its HTML/Tailwind code directly INSIDE the current file instead!
-                 3. NEVER declare mock data in the global scope outside the component. Put it INSIDE the component function.
-                 4. Do NOT wrap components in <Router> or <BrowserRouter>.
+                 💎 PREMIUM UI/UX RULES (STRICTLY FOLLOW THIS):
+                 1. NEVER build a basic, empty white page. Use rich Tailwind styling: 'bg-slate-900', 'bg-gradient-to-r', 'shadow-2xl', 'backdrop-blur', 'rounded-2xl'.
+                 2. ALWAYS use 'lucide-react' icons to make buttons, headers, and stats look highly professional.
+                 3. Layouts MUST use CSS Grid (e.g., 'grid grid-cols-1 md:grid-cols-3 gap-8') or Flexbox for proper spacing. Use generous padding ('p-8').
+                 4. Add interactive hover states to cards and buttons (e.g., 'hover:scale-105 transition-all hover:shadow-lg cursor-pointer').
+                 5. Populate with highly realistic mock data and beautiful Unsplash image placeholders directly INSIDE the component.
+                 6. 🚫 GHOST COMPONENT BAN: NEVER use or import a React component if it is NOT explicitly listed in the 'Project File List' above. If a component you need isn't in the list, write its HTML/Tailwind code directly INSIDE the current file to prevent crashes!
+                 7. Do NOT wrap components in <Router> or <BrowserRouter>.
                  
                  Write the full code for ${filename} now:`;
                  
