@@ -34,7 +34,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 io.on('connection', (socket) => {
-    console.log('🟢 CTO Connected to Mantu 10-Agent Super Swarm');
+    console.log('🟢 CTO Connected to Mantu Dynamic Super Swarm');
 });
 
 const WORKSPACE_DIR = path.join(__dirname, "mantu_workspace");
@@ -52,8 +52,8 @@ const extractJson = (text) => {
         return JSON.parse(cleanText);
     } catch (e) { 
         return { 
-            tech_stack: "React + FastAPI", 
-            files_needed: ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx"] 
+            tech_stack: "React + Tailwind", 
+            files_needed: ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/MainView.jsx"] 
         }; 
     }
 };
@@ -84,7 +84,7 @@ async function safeGenerate(promptText, isJson = true, attachments = {}) {
     const geminiKey = process.env.GEMINI_API_KEY;
     let errorLogs = []; 
 
-    const systemPrompt = "You are a core module of the Mantu Multi-Agent Enterprise Swarm. You write flawless, modern React (v18+) code in PURE JAVASCRIPT (JSX). NEVER use TypeScript. NEVER output partial code. ALWAYS output the entire file content.";
+    const systemPrompt = "You are a core module of the Mantu Multi-Agent Enterprise Swarm. You write flawless, modern React (v18+) code in PURE JAVASCRIPT (JSX). NEVER use TypeScript. NEVER output partial code. ALWAYS output the entire file content perfectly closed.";
 
     if (attachments && attachments.image) {
         try {
@@ -178,7 +178,7 @@ app.get('/api/get-projects', async (req, res) => {
 });
 
 // ==========================================
-// 🏗️ MAIN BUILD API (CRYPTO-SAFE & PAGE-LOCK UPDATE)
+// 🏗️ MAIN BUILD API (DYNAMIC SWARM UPDATE)
 // ==========================================
 app.post('/api/build', async (req, res) => {
     req.socket.setTimeout(0);
@@ -196,44 +196,52 @@ app.post('/api/build', async (req, res) => {
         const isFollowUp = Object.keys(existingFiles || {}).length > 0;
         
         let filesToGenerate = [];
-        let uiContext = "Use modern premium UI with Tailwind CSS. Beautiful hero sections, feature grids, and clean footers.";
+        let uiContext = "Use modern premium UI with Tailwind CSS.";
         let copyContext = "Use highly realistic professional marketing copy and dummy data.";
 
         if (isFollowUp) {
             sendEvent('log', { agent: "Mantu OS", status: "Active", details: "Processing Follow-up Request..." });
             filesToGenerate = Object.keys(existingFiles);
         } else {
-            sendEvent('log', { agent: "Mantu OS", status: "Initializing Swarm", details: "Waking up 10-Agent Virtual IT Company..." });
+            sendEvent('log', { agent: "Mantu OS", status: "Initializing Swarm", details: "Waking up Dynamic Virtual IT Company..." });
 
             try {
-                sendEvent('log', { agent: "Copywriter Agent ✍️", status: "Drafting", details: "Writing professional marketing copy..." });
-                const copyRes = await safeGenerate(`You are a Copywriter. For: "${prompt}", create highly engaging Headings, About Us text, and realistic dummy data. Output ONLY pure text.`, false);
+                sendEvent('log', { agent: "Copywriter Agent ✍️", status: "Drafting", details: "Analyzing prompt for real-world text context..." });
+                const copyRes = await safeGenerate(`You are a Copywriter. Analyze the prompt: "${prompt}". Create highly engaging, industry-specific Headings, subtext, and realistic dummy data items. Output ONLY pure text.`, false);
                 copyContext = copyRes.text;
             } catch(e) {}
 
             try {
-                sendEvent('log', { agent: "UI/UX Architect 🎨", status: "Designing", details: "Creating Tailwind design system..." });
-                const uiRes = await safeGenerate(`You are a UI Designer. For: "${prompt}", define a premium Tailwind CSS design system. Output ONLY a concise text guide.`, false);
+                // 🔥 THE DYNAMIC UI/UX ARCHITECT
+                sendEvent('log', { agent: "UI/UX Architect 🎨", status: "Designing", details: "Extracting Vibe and Color Palette..." });
+                const uiPrompt = `Analyze the user's prompt: "${prompt}". Determine the exact VIBE, INDUSTRY, and MOOD. Create a highly specific, unique Tailwind CSS design system. 
+                If it's crypto/hacker, make it dark/neon. If it's a bakery/kids, make it warm/pastel. 
+                Specify exact color palettes (e.g., text-emerald-400, bg-zinc-950), font recommendations, border-radius, and shadow styles. Output ONLY a concise design guide text.`;
+                const uiRes = await safeGenerate(uiPrompt, false);
                 uiContext = uiRes.text;
             } catch(e) {}
 
-            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Architecting Multi-Page Structure..." });
+            sendEvent('log', { agent: "Product Manager 👔", status: "Planning", details: "Architecting Smart File Structure..." });
             
-            const masterPrompt = `Plan a complete, professional MULTI-PAGE Fullstack project for: "${prompt}".
+            // 🔥 THE DYNAMIC PRODUCT MANAGER
+            const masterPrompt = `Analyze the user's prompt: "${prompt}". Determine if the user wants a SINGLE COMPONENT (like a specific widget/card) or a FULL WEBSITE.
             CRITICAL RULES:
             1. Return ONLY a JSON object representing the file structure.
-            2. You MUST include a full suite of pages: HomePage, AboutPage, ContactPage, and DashboardPage.
-            3. 🚫 MEDIA BAN: NEVER generate image files like 'favicon.ico' or 'logo.png'. ONLY generate text-based code files (.jsx, .css, .html, .py).
-            4. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories.
-            FORMAT: {"tech_stack": "React + FastAPI", "files_needed": ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/AboutPage.jsx", "src/components/ContactPage.jsx", "src/components/DashboardPage.jsx"]}`;
+            2. If it's a FULL WEBSITE, explicitly include multi-page structure: HomePage, AboutPage, ContactPage, Navbar, Footer.
+            3. If it's just a SINGLE COMPONENT, ONLY include that component and necessary wrapper files. Do not overcomplicate.
+            4. Core files ALWAYS needed: package.json, vite.config.js, tailwind.config.js, index.html, src/main.jsx, src/index.css, src/App.jsx.
+            5. 🚫 STRICTLY FLAT COMPONENTS: Keep ALL components flat inside 'src/components/'. DO NOT create subdirectories like 'src/pages/'.
+            6. 🚫 MEDIA BAN: NO .png, .ico, or .jpg files.
+            FORMAT: {"tech_stack": "React + Tailwind", "files_needed": ["package.json", "src/App.jsx", "src/components/YourComponent.jsx"]}`;
             
             let masterData = await safeGenerate(masterPrompt, true, { image, voiceUrl });
             const architecture = extractJson(masterData.text);
             let rawFiles = architecture.files_needed || [];
             
+            // 🔥 THE CTO ABSOLUTE FILE PATH SANITIZER 🔥
             let flattenedFiles = [];
             rawFiles.forEach(f => {
-                if (f.match(/\.(png|jpe?g|gif|svg|ico)$/i)) return;
+                if (f.match(/\.(png|jpe?g|gif|svg|ico)$/i)) return; // Block media
 
                 if (f.endsWith('.jsx') || f.endsWith('.js') || f.endsWith('.tsx')) {
                     const fileName = path.basename(f);
@@ -242,7 +250,7 @@ app.post('/api/build', async (req, res) => {
                     } else if (['main.jsx', 'App.jsx', 'index.js', 'index.jsx'].includes(fileName)) {
                         flattenedFiles.push(`src/${fileName}`);
                     } else {
-                        flattenedFiles.push(`src/components/${fileName}`);
+                        flattenedFiles.push(`src/components/${fileName}`); // Force flat components
                     }
                 } else {
                     flattenedFiles.push(f);
@@ -251,9 +259,9 @@ app.post('/api/build', async (req, res) => {
             
             filesToGenerate = [...new Set(flattenedFiles)]; 
             
-            // 🔥 CTO UPDATE: FORCING ALL PAGES TO EXIST
-            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx", "src/components/Navbar.jsx", "src/components/Footer.jsx", "src/components/HomePage.jsx", "src/components/AboutPage.jsx", "src/components/ContactPage.jsx", "src/components/DashboardPage.jsx"];
-            essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.push(f); });
+            // Ensure strictly essential config files exist
+            const essentialFiles = ["package.json", "vite.config.js", "tailwind.config.js", "index.html", "src/main.jsx", "src/index.css", "src/App.jsx"];
+            essentialFiles.forEach(f => { if(!filesToGenerate.includes(f)) filesToGenerate.unshift(f); });
         }
 
         for (let i = 0; i < filesToGenerate.length; i++) {
@@ -261,30 +269,31 @@ app.post('/api/build', async (req, res) => {
              try {
                  sendEvent('log', { agent: "Developer Agent 👨‍💻", status: "Coding", details: `Generating ${filename}...` });
                  
-                 // 🔥 CTO UPDATE: NO UNQUOTED CURRENCY & NO INLINE PAGES IN APP.JSX
-                 const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this Professional Multi-Page project: "${prompt}". 
+                 const workerPrompt = `Write the COMPLETE, flawless code for '${filename}' for this project: "${prompt}". 
                  Project File List: [ ${filesToGenerate.join(', ')} ]
                  
-                 --- SWARM TEAM CONTEXT ---
-                 🎨 DESIGN SYSTEM: ${uiContext}
-                 ✍️ COPYWRITING: ${copyContext}
+                 --- DYNAMIC SWARM CONTEXT ---
+                 🎨 DESIGN VIBE: ${uiContext}
+                 ✍️ COPYWRITING/DATA: ${copyContext}
                  
                  💎 STRICT RULES (VIOLATION CAUSES FATAL CRASH):
-                 1. 🚫 NO UNQUOTED CURRENCY: In JavaScript objects/arrays, NEVER use unquoted dollar signs (e.g., WRONG: price: $45000). You MUST wrap them in quotes (RIGHT: price: "$45000") or use raw numbers (RIGHT: price: 45000).
-                 2. 🚫 NO INLINE PAGES IN App.jsx: In App.jsx, DO NOT write 'function HomePage() { }' or 'function DashboardPage() { }'. App.jsx is ONLY for <Routes>. The actual pages are separate files!
-                 3. 🚫 NO NAMESPACES: Never use <svg:path> or xmlns:xlink.
-                 4. 🚫 NO TYPESCRIPT ALLOWED: You MUST write PURE JavaScript (JSX).
-                 5. REACT ROUTER v6 ONLY: Use <BrowserRouter>, <Routes> and <Route element={<Component />}>.
-                 6. COMPLETE FILE: Output the ENTIRE file perfectly closed.
+                 1. ADAPT TO THE VIBE: Strictly follow the colors, borders, and shadows specified in the DESIGN VIBE.
+                 2. 🚫 NO UNQUOTED CURRENCY: In JS objects, wrap currency in quotes (e.g. price: "$45000").
+                 3. 🚫 NO INLINE PAGES IN App.jsx: App.jsx is ONLY for <Routes>. Do not redefine component functions inside App.jsx.
+                 4. 🚫 NO NAMESPACES: Never use <svg:path> or xmlns:xlink.
+                 5. 🚫 NO TYPESCRIPT ALLOWED: You MUST write PURE JavaScript (JSX).
+                 6. REACT ROUTER v6 ONLY: Use <BrowserRouter> and <Routes> if routing is needed.
+                 7. 🚫 GHOST COMPONENT BAN: IF YOU NEED A COMPONENT BUT IT IS NOT IN THE 'Project File List', BUILD IT INLINE. DO NOT IMPORT IT!
+                 8. COMPLETE FILE: Output the ENTIRE file perfectly closed.
                  
                  Write the full code for ${filename} now:`;
                  
                  const codeData = await safeGenerate(workerPrompt, false, { image, voiceUrl });
                  let cleanCode = cleanRawCode(codeData.text);
                  
-                 // 🛡️ AGENT: QA BUG-FIXER (CRYPTO CURRENCY DETECTOR & APP.JSX GUARD)
+                 // 🛡️ AGENT: QA BUG-FIXER
                  const badPatterns = [
-                     { regex: /:\s*\$[0-9\,\.]+/g, msg: "FATAL: Unquoted currency symbol in JavaScript object (e.g., price: $100). You MUST wrap it in quotes like price: '$100'." },
+                     { regex: /:\s*\$[0-9\,\.]+/g, msg: "FATAL: Unquoted currency symbol in JS object. Wrap it in quotes like price: '$100'." },
                      { regex: /<[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+/g, msg: "Remove namespace tags like <svg:path>." },
                      { regex: /\s+[a-zA-Z]+:[a-zA-Z]+=/g, msg: "Remove namespace attributes like xmlns:xlink." },
                      { regex: /<Helmet>/g, msg: "Remove 'Helmet' component." },
@@ -297,27 +306,27 @@ app.post('/api/build', async (req, res) => {
                  let detectedBugs = [];
                  badPatterns.forEach(pattern => { if (pattern.regex.test(cleanCode)) detectedBugs.push(pattern.msg); });
 
-                 // Protect App.jsx from Inline Page Component Declarations
                  if (filename.includes('App.jsx')) {
                      if (cleanCode.match(/function\s+(HomePage|AboutPage|ContactPage|DashboardPage)\s*\(/)) {
-                         detectedBugs.push("FATAL: You redefined a page component (like function HomePage) inside App.jsx! Do not redefine them. Only set up the <Routes>.");
+                         detectedBugs.push("FATAL: You redefined a page component inside App.jsx! Only set up the <Routes>.");
                      }
                  }
 
-                 if (filename.endsWith('.jsx') || filename.endsWith('.tsx')) {
+                 if (filename.endsWith('.jsx') || filename.endsWith('.tsx') || filename.endsWith('.js')) {
                      const openBraces = (cleanCode.match(/\{/g) || []).length;
                      const closeBraces = (cleanCode.match(/\}/g) || []).length;
                      if (openBraces !== closeBraces) {
                          detectedBugs.push("Mismatched braces {}! Generate FULL code and close tags.");
                      }
-                     if (!cleanCode.includes('export ')) {
-                         detectedBugs.push("Missing 'export default'. Component is incomplete.");
+                     // Ensure React components are actually exported
+                     if (!cleanCode.includes('export ') && !filename.includes('vite.config') && !filename.includes('tailwind.config')) {
+                         detectedBugs.push("Missing 'export'. Component is incomplete.");
                      }
                  }
 
                  if (detectedBugs.length > 0) {
                      sendEvent('log', { agent: "QA Agent 🛡️", status: "Fixing Bugs", details: `Errors detected in ${filename}. Auto-healing...` });
-                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete pure JavaScript (JSX) code. NO UNQUOTED CURRENCY. NO INLINE PAGES IN APP.JSX.`;
+                     const fixPrompt = `You generated bad code for '${filename}'. FIX THESE ERRORS: \n- ${detectedBugs.join('\n- ')}\n\nBAD CODE:\n${cleanCode}\n\nFIX ALL ERRORS. Output ONLY fully corrected, complete pure JavaScript (JSX) code. NO TYPESCRIPT.`;
                      const fixedData = await safeGenerate(fixPrompt, false);
                      cleanCode = cleanRawCode(fixedData.text);
                  }
